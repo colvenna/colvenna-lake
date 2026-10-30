@@ -344,15 +344,15 @@ PY
 # other to an anonymous reader. A release install takes them from its candidate's copies instead,
 # which check-release.sh checks.
 assert_catalog_source() {
-  local tool candidate parts source account region kind ref digest held
+  local tool candidate parts registry account region kind ref digest answer
   tool="$(dirname "${BASH_SOURCE[0]}")/../release/manifest.py"
   candidate="$(python3 "$tool" catalog candidate)" || return 1
   parts="$(python3 "$tool" catalog-source "${COLVENNA_CATALOG_REGISTRY:-}")" || return 1
-  IFS=$'\t' read -r source account region <<<"$parts"
+  IFS=$'\t' read -r registry account region <<<"$parts"
   if [[ -z "$region" ]]; then
-    if ! held="$(python3 "$tool" catalog-held "$source" 2>&1)"; then
+    if ! answer="$(python3 "$tool" catalog-held "$registry" 2>&1)"; then
       echo "No Colvenna Catalog $candidate (deploy/images/colvenna-catalog.json) for an anonymous reader in" \
-        "$source: $held" >&2
+        "$registry: $answer" >&2
       if [[ -z "${COLVENNA_CATALOG_REGISTRY:-}" ]]; then
         echo "Until it is public there, give COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>], a registry" \
           "holding the same digests, e.g. the maintainers' release registry" \
@@ -363,13 +363,13 @@ assert_catalog_source() {
     return 0
   fi
   for kind in image chart; do
-    ref="$source/$(python3 "$tool" catalog "$kind.repository")" digest="$(python3 "$tool" catalog "$kind.digest")"
-    held="$(aws_read "Colvenna Catalog $candidate's $kind in $source" ecr batch-get-image \
+    ref="$registry/$(python3 "$tool" catalog "$kind.repository")" digest="$(python3 "$tool" catalog "$kind.digest")"
+    answer="$(aws_read "Colvenna Catalog $candidate's $kind in $registry" ecr batch-get-image \
       --region "$region" --registry-id "$account" --repository-name "${ref#*/}" \
       --image-ids "imageDigest=$digest" --accepted-media-types "${MANIFEST_TYPES[@]}" \
       --query 'length(images)' --output text)" || return 1
-    if [[ "$held" != 1 ]]; then
-      echo "COLVENNA_CATALOG_REGISTRY: ${source%%/*} holds no ${ref#*/}@$digest, Colvenna Catalog $candidate's" \
+    if [[ "$answer" != 1 ]]; then
+      echo "COLVENNA_CATALOG_REGISTRY: ${registry%%/*} holds no ${ref#*/}@$digest, Colvenna Catalog $candidate's" \
         "$kind (deploy/images/colvenna-catalog.json): give a registry that does" >&2
       return 1
     fi

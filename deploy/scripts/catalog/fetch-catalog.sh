@@ -13,7 +13,8 @@
 #   3. records both in deploy/.state/<env>/catalog-release.json, which install-catalog.sh reads.
 # The release comes from the registry the catalog publishes it in, GitHub Container Registry
 # (ghcr.io/colvenna/colvenna-catalog and ghcr.io/colvenna/charts/colvenna-catalog, as the pin names
-# them), read anonymously: its packages are public. COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>]
+# them), read anonymously, as GitHub gives a public package to anyone (until the catalog's are public
+# there, an anonymous read is refused). COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>]
 # names another that holds the same digests under the same repository names below its prefix (the
 # maintainers' private release registry, for a candidate's acceptance before the catalog is public):
 # an ECR registry is read with the AWS credentials, with pull rights only; any other, anonymously too.
@@ -32,32 +33,32 @@ tool="$DEPLOY_DIR/scripts/release/manifest.py"
 pin() { python3 "$tool" catalog "$1"; }
 candidate="$(pin candidate)" built_from="$(pin built_from)"
 image_digest="$(pin image.digest)" chart_digest="$(pin chart.digest)" chart_version="$(pin chart.version)"
-# The source's region when it is an ECR registry, read with the AWS credentials; none when it is read
+# The registry's region when it is an ECR registry, read with the AWS credentials; none when it is read
 # anonymously.
 region=""
 case "${1:-}" in
   "")
     parts="$(python3 "$tool" catalog-source "${COLVENNA_CATALOG_REGISTRY:-}")"
-    IFS=$'\t' read -r source _ region <<<"$parts"
-    from="Colvenna Catalog's release $candidate in $source"
-    image_source="$source/$(pin image.repository)"
-    chart_source="$source/$(pin chart.repository)"
+    IFS=$'\t' read -r registry _ region <<<"$parts"
+    from="Colvenna Catalog's release $candidate in $registry"
+    image_source="$registry/$(pin image.repository)"
+    chart_source="$registry/$(pin chart.repository)"
     ;;
   --release)
     release="${2:?$usage}"
-    source="${COLVENNA_RELEASE_REGISTRY:-}"
-    if [[ -z "$source" ]]; then
+    registry="${COLVENNA_RELEASE_REGISTRY:-}"
+    if [[ -z "$registry" ]]; then
       echo "COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com: the release registry that holds" \
         "$release's copies of Colvenna Catalog $candidate" >&2
       exit 1
     fi
-    parts="$(python3 "$tool" registry "$source")"
+    parts="$(python3 "$tool" registry "$registry")"
     region="${parts#*$'\t'}"
     manifest="$REPO_DIR/release/$release/manifest.json"
     python3 "$tool" validate "$manifest" --candidate "$release"
     from="Colvenna Lake's release $release"
-    image_source="$source/$(python3 "$tool" get "$manifest" catalog.image.repository)"
-    chart_source="$source/$(python3 "$tool" get "$manifest" catalog.chart.repository)"
+    image_source="$registry/$(python3 "$tool" get "$manifest" catalog.image.repository)"
+    chart_source="$registry/$(python3 "$tool" get "$manifest" catalog.chart.repository)"
     ;;
   *) echo "$usage" >&2; exit 1 ;;
 esac
@@ -73,15 +74,15 @@ trap 'rm -rf "$work"' EXIT
 aws ecr get-login-password | crane auth login "$ECR_REGISTRY" -u AWS --password-stdin >/dev/null
 if [[ -n "$region" ]]; then
   aws ecr get-login-password --region "$region" >"$work/token"
-  crane auth login "${source%%/*}" -u AWS --password-stdin <"$work/token" >/dev/null
-  helm registry login "${source%%/*}" --username AWS --password-stdin <"$work/token" >/dev/null 2>&1
+  crane auth login "${registry%%/*}" -u AWS --password-stdin <"$work/token" >/dev/null
+  helm registry login "${registry%%/*}" --username AWS --password-stdin <"$work/token" >/dev/null 2>&1
   rm -f "$work/token"
 fi
-# unread <what>: the source did not give it; an anonymous one may not have it public yet.
-unread() {
+# cannot_read <what>: the registry did not give it; an anonymous one may not have it public yet.
+cannot_read() {
   echo "Cannot read $1" >&2
   if [[ -z "$region" && -z "${COLVENNA_CATALOG_REGISTRY:-}" ]]; then
-    echo "$source gives Colvenna Catalog's packages to anyone once they are public. Until $candidate is" \
+    echo "$registry gives Colvenna Catalog's packages to anyone once they are public. Until $candidate is" \
       "there, COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>] names a registry holding the same digests," \
       "e.g. the maintainers' release registry <account>.dkr.ecr.<region>.amazonaws.com/colvenna-catalog-release" >&2
   fi
@@ -90,13 +91,13 @@ unread() {
 
 # 1. The image and the chart are the release's, each read by its digest (crane and Helm check what the
 # registry gives against it), before anything is copied or kept.
-crane config "$image_source@$image_digest" >"$work/image-config.json" || unread "$image_source@$image_digest"
+crane config "$image_source@$image_digest" >"$work/image-config.json" || cannot_read "$image_source@$image_digest"
 python3 "$tool" catalog-check image "$work/image-config.json"
-crane config "$chart_source@$chart_digest" >"$work/chart-config.json" || unread "$chart_source@$chart_digest"
+crane config "$chart_source@$chart_digest" >"$work/chart-config.json" || cannot_read "$chart_source@$chart_digest"
 python3 "$tool" catalog-check chart "$work/chart-config.json"
 mkdir "$work/chart"
 helm pull "oci://$chart_source@$chart_digest" --destination "$work/chart" >"$work/pull.txt" 2>&1 \
-  || { cat "$work/pull.txt" >&2; unread "oci://$chart_source@$chart_digest"; }
+  || { cat "$work/pull.txt" >&2; cannot_read "oci://$chart_source@$chart_digest"; }
 # Helm names a package pulled by digest <name>@sha256-<hex>.tgz: the one file it left.
 packages=("$work"/chart/*.tgz)
 [[ ${#packages[@]} == 1 && -f "${packages[0]}" ]] \

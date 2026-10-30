@@ -79,6 +79,7 @@ Problems go to stderr, with exit status 1.
 """
 import glob
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -385,24 +386,26 @@ def catalog_source(registry=None, pin=None):
     return registry, None, None
 
 
-def catalog_held(prefix, pin=None, timeout=30):
+def catalog_anonymous_problems(prefix, pin=None, timeout=30):
     """What keeps an anonymous reader from the pinned release's image and chart, by digest, in the
-    registry and prefix: an empty list when it gets both. Read as crane and Helm read a registry with
-    no credentials (the OCI distribution API): the manifest's HEAD, after the registry's Bearer token
-    challenge when it makes one; plain HTTP only for a registry on this host, as theirs."""
+    registry and prefix: an empty list when it gets both. Read as a client without credentials reads
+    a registry over the OCI distribution API (its HTTPS endpoint): the manifest's HEAD, after the
+    registry's Bearer token challenge when it makes one. GitHub Container Registry gives public
+    images to anonymous readers ("You can also access public container images anonymously",
+    docs.github.com, Working with the Container registry)."""
     pin = pin or catalog_pin()
     host, _, namespace = catalog_source(prefix, pin)[0].partition("/")
-    base = f"{'http' if host.split(':')[0] in ('localhost', '127.0.0.1') else 'https'}://{host}"
     found = []
     for kind in ("image", "chart"):
         repository, digest = pin[kind]["repository"], pin[kind]["digest"]
-        problem = anonymous_manifest(base, "/".join(p for p in (namespace, repository) if p), digest, timeout)
+        problem = anonymous_manifest_problem(f"https://{host}", "/".join(p for p in (namespace, repository) if p),
+                                             digest, timeout)
         if problem:
             found.append(f"{prefix}/{repository}@{digest}, the {kind}: {problem}")
     return found
 
 
-def anonymous_manifest(base, repository, digest, timeout):
+def anonymous_manifest_problem(base, repository, digest, timeout):
     """None if the registry at base gives an anonymous reader the manifest repository@digest, else
     what it answered."""
     url = f"{base}/v2/{repository}/manifests/{digest}"
@@ -430,20 +433,21 @@ def anonymous_manifest(base, repository, digest, timeout):
             # The registry's anonymous token for pulling the repository, as its challenge says.
             params = dict(re.findall(r'(\w+)="([^"]*)"', challenge))
             realm = params.get("realm", "")
-            if urllib.parse.urlsplit(realm).scheme not in ("https", "http"):
-                return f"HTTP 401: a token challenge without an HTTP realm ({challenge})"
+            if urllib.parse.urlsplit(realm).scheme != "https":
+                return f"HTTP 401: a token challenge without an HTTPS realm ({challenge})"
             query = {key: params[key] for key in ("service", "scope") if key in params}
             query.setdefault("scope", f"repository:{repository}:pull")
-            with urllib.request.urlopen(f"{realm}?{urllib.parse.urlencode(query)}", timeout=timeout) as answer:
+            token_url = f"{realm}{'&' if '?' in realm else '?'}{urllib.parse.urlencode(query)}"
+            with urllib.request.urlopen(token_url, timeout=timeout) as answer:
                 body = json.load(answer)
-            token = body.get("token") or body.get("access_token") if isinstance(body, dict) else None
+            token = (body.get("token") or body.get("access_token")) if isinstance(body, dict) else None
             if not token:
                 return "the registry's token endpoint gave no token"
             response = head({**accept, "Authorization": f"Bearer {token}"})
     except urllib.error.HTTPError as error:
         return refused(error)
-    except (urllib.error.URLError, OSError, ValueError) as error:
-        return f"cannot read it: {getattr(error, 'reason', error)}"
+    except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as error:
+        return f"cannot read it: {getattr(error, 'reason', None) or error!r}"
     with response:
         answered = response.headers.get("Docker-Content-Digest")
     if answered and answered != digest:
@@ -904,7 +908,7 @@ def main(argv):
         prefix, account, region = catalog_source(args[0] if args else None)
         print("\t".join([prefix] + ([account, region] if account else [])))
     elif command == "catalog-held" and len(args) == 1:
-        found = catalog_held(args[0])
+        found = catalog_anonymous_problems(args[0])
         if found:
             raise ValueError("; ".join(found))
     elif command == "catalog-check" and len(args) == 2:

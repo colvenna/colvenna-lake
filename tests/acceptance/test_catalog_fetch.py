@@ -8,12 +8,15 @@ Lake candidate's copies with --release (install-images.sh <candidate> catalog). 
 which copies the release into a candidate's release registry, finds every repository it copies into
 there before it checks anything. Stub aws, crane and helm (test_third_party.py's) stand for the
 registries. lib/preflight.sh's assert_catalog_source, which reads an anonymous source before an install
-makes anything, reads a stub OCI registry served here over HTTP (the distribution API's manifest HEAD
-and its Bearer token challenge)."""
+makes anything, reads a stub OCI registry served here over HTTPS (the distribution API's manifest
+HEAD and its Bearer token challenge)."""
 import http.server
 import json
 import os
 import shutil
+import ssl
+import subprocess
+import tempfile
 import threading
 import unittest
 
@@ -239,14 +242,15 @@ class InstallImagesCatalogTest(InstallImages):
 
 
 class StubRegistry(http.server.BaseHTTPRequestHandler):
-    """An OCI registry as GitHub Container Registry answers an anonymous reader: a manifest's HEAD
-    without a token gets 401 and a Bearer challenge naming the token endpoint; the endpoint gives an
-    anonymous token to pull a public repository and refuses one (403 DENIED) for a private one, or one
-    that is not there; with the token, the HEAD answers 200 and the digest, or 404."""
+    """An OCI registry as GitHub Container Registry answers an anonymous reader, over HTTPS: a
+    manifest's HEAD without a token gets 401 and a Bearer challenge naming the token endpoint; the
+    endpoint gives an anonymous token to pull a public repository and refuses one (403 DENIED) for a
+    private one, or one that is not there; with the token, the HEAD answers 200 and the digest, or 404.
+    (So answered ghcr.io on 2026-10-30, for a public package and for the catalog's, not public yet.)"""
 
     held = set()        # (repository, digest) the registry holds
     public = set()      # repositories whose token it gives
-    seen = []           # (method, path, authorized) of each request
+    seen = []           # (method, path, authorization) of each request
 
     def log_message(self, *args):
         pass
@@ -281,7 +285,7 @@ class StubRegistry(http.server.BaseHTTPRequestHandler):
             repository, digest = self.path[len("/v2/"):].split("/manifests/")
             if authorization != f"Bearer anonymous-{repository}":
                 host = self.headers["Host"]
-                return self.reply(401, {"WWW-Authenticate": f'Bearer realm="http://{host}/token",service="stub",'
+                return self.reply(401, {"WWW-Authenticate": f'Bearer realm="https://{host}/token",service="stub",'
                                                             f'scope="repository:{repository}:pull"'})
             if (repository, digest) in self.held:
                 return self.reply(200, {"Docker-Content-Digest": digest,
@@ -292,11 +296,22 @@ class StubRegistry(http.server.BaseHTTPRequestHandler):
 
 class CatalogSourcePreflightTest(unittest.TestCase):
     """install.sh's preflight (lib/preflight.sh assert_catalog_source), before anything is made: the
-    catalog release's source gives its image and chart by digest, an anonymous one to anyone."""
+    catalog release's source gives its image and chart by digest, an anonymous one to anyone. The
+    stub registry serves HTTPS with a certificate of its own for 127.0.0.1, which the preflight's
+    reader trusts through SSL_CERT_FILE."""
 
     @classmethod
     def setUpClass(cls):
+        cls.tls = tempfile.TemporaryDirectory()
+        cls.certificate = os.path.join(cls.tls.name, "registry.pem")
+        key = os.path.join(cls.tls.name, "registry.key")
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj",
+                        "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", key,
+                        "-out", cls.certificate], check=True, capture_output=True)
         cls.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), StubRegistry)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cls.certificate, key)
+        cls.server.socket = context.wrap_socket(cls.server.socket, server_side=True)
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
         cls.registry = f"127.0.0.1:{cls.server.server_address[1]}/colvenna"
 
@@ -304,6 +319,7 @@ class CatalogSourcePreflightTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown()
         cls.server.server_close()
+        cls.tls.cleanup()
 
     def serve(self, held=(IMAGE, CHART), public=True):
         StubRegistry.held = {("colvenna/colvenna-catalog", held[0]), ("colvenna/charts/colvenna-catalog", held[1])}
@@ -316,7 +332,7 @@ class CatalogSourcePreflightTest(unittest.TestCase):
         scratch = scratch or Scratch(self)
         return scratch.run_bash(f'set -euo pipefail; source "{scratch.root}/deploy/env.sh"; '
                                 f'source "{scratch.root}/deploy/scripts/lib/preflight.sh"; assert_catalog_source',
-                                COLVENNA_CATALOG_REGISTRY=registry)
+                                COLVENNA_CATALOG_REGISTRY=registry, SSL_CERT_FILE=self.certificate)
 
     def test_an_anonymous_source_holding_both_digests(self):
         self.serve()
