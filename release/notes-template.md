@@ -74,7 +74,7 @@ COLVENNA_ENV=<环境> COLVENNA_REGION=<区域> COLVENNA_ACCOUNT=<账号> \
 | UAT：<区域 2> | PASS <数>、FAIL <数>、BLOCKED <数>、NOT_RUN <数>（必需用例 <数> 条） | UAT 报告的 <节> |
 | 性能验收 | <达到 / 未达到第 4 节的口径> | 性能测试文档的 <节> |
 | 安全：暴露面与拒绝证据 | <结论> | <安全一节的链接> |
-| CI | <状态，例如 `WAIVED_BY_REQUESTER_NOT_PASS`：GitHub Actions 因账单拒绝启动，请求方豁免；每个 PR 在确切 SHA 上本地执行全部作业> | <各 PR 的本地 CI 记录> |
+| CI | <状态：`PASS`，本候选的每个 PR 在确切的 head 提交上 GitHub Actions 的全部作业都成功（2026-10-30 起的口径，见 CONTRIBUTING.md）；只有 Actions 无法运行时才豁免，记为 `WAIVED_BY_REQUESTER_NOT_PASS` 并写明原因与每个 PR 在确切 SHA 上本地执行全部作业的记录> | <各 PR 的 GitHub Actions 运行；豁免时另附本地 CI 记录> |
 | 发布结论 | <GO / NO-GO> | <发布检查报告的链接> |
 
 ## 6. 变更

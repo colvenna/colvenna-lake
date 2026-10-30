@@ -357,8 +357,11 @@ class CatalogPin(unittest.TestCase):
         self.assertRegex(PIN["repository"], r"^https://github\.com/[^/]+/colvenna-catalog$")
         self.assertRegex(PIN["candidate"], r"^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$")
         self.assertEqual(PIN["chart"]["version"], PIN["candidate"][1:])
-        self.assertEqual(PIN["image"]["repository"], "colvenna-catalog-release/colvenna-catalog")
-        self.assertEqual(PIN["chart"]["repository"], "colvenna-catalog-release/charts/colvenna-catalog")
+        # Published in GitHub Container Registry: ghcr.io/colvenna/colvenna-catalog and
+        # ghcr.io/colvenna/charts/colvenna-catalog.
+        self.assertEqual(PIN["registry"], "ghcr.io/colvenna")
+        self.assertEqual(PIN["image"]["repository"], "colvenna-catalog")
+        self.assertEqual(PIN["chart"]["repository"], "charts/colvenna-catalog")
         # The catalog's tag adds its release record to the commit the release was built from.
         self.assertNotEqual(PIN["tag_commit"], PIN["built_from"])
 
@@ -374,6 +377,12 @@ class CatalogPin(unittest.TestCase):
         self.assertFound(lambda p: p["image"].update(platform="linux/arm64"), "image.platform")
         self.assertFound(lambda p: p["image"].update(repository="colvenna-lake-release/colvenna-catalog"),
                          "image.repository")
+        self.assertFound(lambda p: p["image"].update(repository="ghcr.io/colvenna/colvenna-catalog"),
+                         "image.repository")
+        self.assertFound(lambda p: p.pop("registry"), "registry: missing")
+        self.assertFound(lambda p: p.update(registry="ghcr.io/someone"), "registry: 'ghcr.io/someone', not")
+        # Never ECR Public: the catalog publishes in GitHub Container Registry only.
+        self.assertFound(lambda p: p.update(registry="public.ecr.aws/colvenna"), "registry")
         self.assertFound(lambda p: p["chart"].update(version="0.1.0"), "chart.version")
         self.assertFound(lambda p: p["chart"].update(name="catalog"), "chart.name")
         self.assertFound(lambda p: p["chart"].update(digest=SHA), "chart.digest")
@@ -383,7 +392,28 @@ class CatalogPin(unittest.TestCase):
         # Repositories and digests only: never the registry that holds them, nor its account.
         self.assertFound(lambda p: p["image"].update(repository="123456789012.dkr.ecr.us-west-2.amazonaws.com/x"),
                          "AWS account id")
+        self.assertFound(lambda p: p.update(registry="123456789012.dkr.ecr.us-west-2.amazonaws.com/x"),
+                         "AWS account id")
         self.assertEqual(manifest.catalog_pin_problems([]), ["not an object"])
+
+    def test_where_a_source_install_takes_it_from(self):
+        # By default the pin's registry, read anonymously.
+        self.assertEqual(manifest.catalog_source(None, PIN), ("ghcr.io/colvenna", None, None))
+        self.assertEqual(manifest.catalog_source("", PIN), ("ghcr.io/colvenna", None, None))
+        # An ECR registry, with or without a prefix, read with the AWS credentials of its account's region.
+        ecr = "210987654321.dkr.ecr.us-east-2.amazonaws.com"
+        self.assertEqual(manifest.catalog_source(f"{ecr}/colvenna-catalog-release", PIN),
+                         (f"{ecr}/colvenna-catalog-release", "210987654321", "us-east-2"))
+        self.assertEqual(manifest.catalog_source(ecr, PIN), (ecr, "210987654321", "us-east-2"))
+        # Any other, anonymously: a mirror, or a registry on this host.
+        for other in ("registry.example.com/mirror/colvenna", "127.0.0.1:5000/colvenna", "ghcr.io/colvenna"):
+            self.assertEqual(manifest.catalog_source(other, PIN), (other, None, None))
+        for bad in ("https://ghcr.io/colvenna", "ghcr.io/colvenna/", "ghcr.io//colvenna", "Ghcr.io/colvenna",
+                    "ghcr.io/colvenna:v1", "ghcr.io/colvenna@" + PIN["image"]["digest"], " ghcr.io/colvenna",
+                    "123456789012.dkr.ecr.cn-north-1.amazonaws.com.cn/x", "12345.dkr.ecr.us-west-2.amazonaws.com/x",
+                    "123456789012.dkr.ecr.us-gov-west-1.amazonaws.com/x"):
+            with self.subTest(bad=bad), self.assertRaisesRegex(ValueError, "COLVENNA_CATALOG_REGISTRY="):
+                manifest.catalog_source(bad, PIN)
 
     def test_an_image_or_a_chart_of_the_release(self):
         image = {"os": "linux", "architecture": "amd64",

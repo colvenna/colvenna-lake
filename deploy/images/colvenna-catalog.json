@@ -3,13 +3,14 @@
   "candidate": "v1.0.0-rc.1",
   "tag_commit": "698fb185ddb026ae438d9cf7dfadc59d16f40206",
   "built_from": "2afb93e40a97734f4e3ed3f67c53100fddb01d14",
+  "registry": "ghcr.io/colvenna",
   "image": {
-    "repository": "colvenna-catalog-release/colvenna-catalog",
+    "repository": "colvenna-catalog",
     "digest": "sha256:4aff08682fc587db4f825f96d9734c82d1b03ba720e935882b15552c15f2efd6",
     "platform": "linux/amd64"
   },
   "chart": {
-    "repository": "colvenna-catalog-release/charts/colvenna-catalog",
+    "repository": "charts/colvenna-catalog",
     "name": "colvenna-catalog",
     "version": "1.0.0-rc.1",
     "digest": "sha256:1d45b659313afd7ce02106b884929fff3a3d5e16ca22b4fb2e445e60c91dbcf3"

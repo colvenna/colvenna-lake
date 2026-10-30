@@ -11,6 +11,10 @@ This repository contains Colvenna Lake: the declarative `colvenna-operator` (Jav
 
 Releases make no backward-compatibility commitment: a new version does not guarantee compatibility with, or rollback to, an older one; the [install manual (section 7)](docs/manual/install.md#7-升级) describes how each upgrade is done.
 
+## Continuous integration
+
+Since 2026-10-30, GitHub Actions is the CI of record for this repository. A pull request merges only when every job of [`.github/workflows/lint.yml`](.github/workflows/lint.yml) has succeeded on its exact head commit; a new commit or a rebase needs a new run. The local checks below supplement it: run them before you push, but they do not replace a successful run on GitHub. A waiver, merging on local results, is allowed only when Actions cannot run at all (for example, the runners are unavailable), not when a job fails. The pull request then says why, and records a local run of every job on that exact commit.
+
 ## Local validation
 
 ```bash
