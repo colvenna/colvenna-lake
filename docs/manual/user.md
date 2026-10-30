@@ -1881,11 +1881,11 @@ Operator 与 colvenna-catalog 在端口 9100 导出 Prometheus 指标。Operator
 
 各节末尾写了该能力的限制，这里汇总平台层面的几项：
 
-- **只在 Amazon EKS 加 S3 上验证过。** 按表凭证由 AWS STS 签发，作业身份用 IRSA，Web 入口用 ALB 与 Cognito。第二朵云的适配没有开展（#33）。
+- **只在 Amazon EKS 加 S3 上验证过。** 按表凭证由 AWS STS 签发，作业身份用 IRSA，Web 入口用 ALB 与 Cognito。第二朵云的适配没有开展（[#1](https://github.com/colvenna/colvenna-lake/issues/1)）。
 - **一套环境在一个区域。** 环境可以装在任一标准 AWS 区域（`COLVENNA_REGION`，见[安装部署手册](install.md)第 1 节），中国区与 GovCloud 不支持；没有跨区域的复制或容灾。
 - **开发阶段不保证升级兼容。** CRD 字段与作业参数的格式都可能变化，不做跨版本回退演练。
 - **规模。** 验收在写入、查询节点各 2 台的环境上进行，作业多为 0.5 CPU，表在数千到数万行。容量与性能的结论见[性能测试](../uat/performance.md)。
-- **你自己的 Flink 作业以流模式写有界输入、写入并行度大于 1 时，可能静默丢数据。** 这是上游 Paimon 2.0.0 的缺陷，记在本仓库的 #297。
+- **你自己的 Flink 作业以流模式写有界输入、写入并行度大于 1 时，可能静默丢数据。** 这是上游 Paimon 2.0.0 的缺陷，记在本仓库的 [#6](https://github.com/colvenna/colvenna-lake/issues/6)。
   - 触发条件，四个同时成立：流模式且开了 checkpoint；输入有界，例如一次性回填、`INSERT INTO ... SELECT` 一个有界的源；写入并行度大于 1，各写入子任务在不同的 checkpoint 之后结束；最后一个写入子任务的输入结束，赶在提交器处理上一个"checkpoint 完成"之前。提交慢或节点忙时更容易碰上。
   - 后果：后结束的写入子任务在输入结束时刷出的数据没有提交，成了孤儿文件；作业照常 `FINISHED`，没有报错。原因在 Paimon 的提交器 [`CommitterOperator`](https://github.com/apache/paimon/blob/604e6d5e131c74a8d127333a2a3ad6d0319732bf/paimon-flink/paimon-flink-common/src/main/java/org/apache/paimon/flink/sink/CommitterOperator.java#L180-L220)；截至 2026-10-28，[2.1.0](https://github.com/apache/paimon/blob/3a5ffe7870697e2c2605e63413fb5ac5800aae7e/paimon-flink/paimon-flink-common/src/main/java/org/apache/paimon/flink/sink/CommitterOperator.java) 与 master（`5be7e2dd`）的这个文件与 2.0.0 相同。
   - 影响范围：经 colvenna-catalog 以流模式写有界输入的用户作业；问题不在 catalog，任何使用 Paimon 2.0.0 Flink 连接器的部署都一样。平台自己管理的作业不受影响：数据库 CDC 源（MySQL、PostgreSQL、MongoDB 与 Kafka 承载的 CDC）、Kafka 事件源与分层表的作业，输入都是无界的；`LakeTask` 以批模式运行。
@@ -1937,4 +1937,4 @@ Operator 与 colvenna-catalog 在端口 9100 导出 Prometheus 指标。Operator
 
 Colvenna Lake 不是 ASF 的项目；平台的查询引擎镜像是基于 Apache Doris 4.1.4 的修改构建，不是 ASF 的发布。其他各方的商标与各镜像的命名依据，见[商标与命名](../../release/trademarks.md)。
 
-> 注：本文中的 issue 与 PR 编号（如 #238）是本项目早期私有仓库的编号，本仓库里没有对应的页面。
+> 注：本文中的 issue 与 PR 编号（如 #238）是本项目早期私有仓库的编号，本仓库里没有对应的页面。其中带链接的 issue 编号（如 [#1](https://github.com/colvenna/colvenna-lake/issues/1)）是本仓库现在的编号。
