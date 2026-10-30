@@ -118,7 +118,8 @@ git checkout <candidate>
 COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com \
   deploy/install.sh --release <candidate>               # add --fixtures for the test sources
 
-# Or from source: every image built from this commit.
+# Or from source: every image built from this commit, but Colvenna Catalog's, its pinned release
+# pulled by digest from GitHub Container Registry.
 DORIS_IMAGE_SOURCE=<account>.dkr.ecr.<region>.amazonaws.com/<repository> deploy/install.sh
 ```
 
@@ -129,7 +130,8 @@ deploy/scripts/entry/users.sh add alice alice@example.com colvenna-admin   # add
 ```
 
 - **From a release.** From v1.0.0-rc.2 on, the manifest (`release/<candidate>/manifest.json`) names repositories, tags and digests, not a registry: `COLVENNA_RELEASE_REGISTRY` is the release registry to copy from, the maintainers' or any copy holding those digests (v1.0.0-rc.1's manifest still names its registry, and its own tools read it there). Another account needs read access to the maintainers' first: they add the account to the registry's pull accounts ([release/README.md](release/README.md)).
-- **From source.** Only the query engine's images, a build based on Apache Doris 4.1.4, are not built: they are copied by digest from `DORIS_IMAGE_SOURCE`, any ECR repository holding them that your credentials can read. Given `COLVENNA_RELEASE_REGISTRY`, and a release manifest in the checkout that pins them in `colvenna-lake-release/query-engine`, the release registry is the default, and `DORIS_IMAGE_SOURCE` may be left out (the manifests of v1.0.0-rc.1 and v1.0.0-rc.2 name the repositories of the product's former names, and are not taken). Without such a repository, rebuild the images from the recipe in [`deploy/images/doris/`](deploy/images/doris/README.md).
+- **From source: Colvenna Catalog.** The control plane is not built here: it is the release [`deploy/images/colvenna-catalog.json`](deploy/images/colvenna-catalog.json) pins. Its image and Helm chart are pulled by digest, anonymously, from GitHub Container Registry (`ghcr.io/colvenna/colvenna-catalog`, `ghcr.io/colvenna/charts/colvenna-catalog`), and checked against the commit they were built from before anything is copied. `COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>]` names another registry holding the same digests under the same names, such as the maintainers' private release registry for a candidate's acceptance before the catalog is public there; an ECR registry is read with your AWS credentials ([release/README.md](release/README.md#colvenna-catalog)).
+- **From source: the query engine.** The query engine's images, a build based on Apache Doris 4.1.4, are not built either: they are copied by digest from `DORIS_IMAGE_SOURCE`, any ECR repository holding them that your credentials can read. Given `COLVENNA_RELEASE_REGISTRY`, and a release manifest in the checkout that pins them in `colvenna-lake-release/query-engine`, the release registry is the default, and `DORIS_IMAGE_SOURCE` may be left out (the manifests of v1.0.0-rc.1 and v1.0.0-rc.2 name the repositories of the product's former names, and are not taken). Without such a repository, rebuild the images from the recipe in [`deploy/images/doris/`](deploy/images/doris/README.md).
 - **Third-party images** (operators, Marquez, Polaris, Prometheus, Grafana, the test stand-ins) are pinned by digest in [`deploy/images/third-party.tsv`](deploy/images/third-party.tsv) and copied into the environment's own ECR before anything runs them, so a digest upstream later drops does not break the environment ([release/README.md](release/README.md#第三方镜像)).
 
 An environment name starts with a lowercase letter, has at most 8 lowercase letters and digits, and is unique in the account. Before it changes anything, the first run checks the following:

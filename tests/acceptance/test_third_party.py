@@ -55,7 +55,11 @@ def tag(name):
 # The stub: aws and crane both, by the name it is called by. Calls go to a log of their own, a line
 # each: the two ends of a pipe (aws ecr get-login-password | crane auth login) run at once, and only
 # crane copy and crane tag, never piped, change the state. The environment's repositories are
-# IMMUTABLE: a tag holding one digest is never given another.
+# IMMUTABLE: a tag holding one digest is never given another. An ECR registry, and a repository
+# under a prefix the state lists ("listed", e.g. the catalog's in GitHub Container Registry), holds
+# what the state gives it; any other upstream, whatever is not gone. A registry the state calls
+# private gives nothing to a reader not logged in to it in the run's own credentials (crane's
+# $DOCKER_CONFIG/config.json, Helm's $HELM_REGISTRY_CONFIG), where the stub's logins write, as theirs.
 STUB = r'''#!/usr/bin/env python3
 import json, os, re, sys
 path = os.environ["STUB_STATE"]
@@ -78,11 +82,29 @@ def held(ref):
     if "@" in ref:
         repo, digest = ref.rsplit("@", 1)
         repo = re.sub(r":[^/]+$", "", repo)
-        ecr = re.match(r"^[0-9]{12}\.dkr\.ecr\.", repo)
-        present = (not ecr) or any(t.rsplit(":", 1)[0] == repo and d == digest for t, d in state["tags"].items()) \
+        listed = re.match(r"^[0-9]{12}\.dkr\.ecr\.", repo) or repo.startswith(tuple(state.get("listed", [])))
+        present = (not listed) or any(t.rsplit(":", 1)[0] == repo and d == digest for t, d in state["tags"].items()) \
             or ref in state["digests"]
         return digest if present else None
     return state["tags"].get(ref)
+def logins(variable):
+    """The registries the run logged in to, in the credentials file the variable names."""
+    path = os.environ.get(variable, "")
+    path = os.path.join(path, "config.json") if variable == "DOCKER_CONFIG" else path
+    return json.load(open(path)).get("auths", {}) if path and os.path.exists(path) else {}
+def login(variable, registry):
+    sys.stdin.read()
+    path = os.environ.get(variable, "")
+    if path:
+        path = os.path.join(path, "config.json") if variable == "DOCKER_CONFIG" else path
+        auths = logins(variable)
+        auths[registry] = {"auth": "stub"}
+        json.dump({"auths": auths}, open(path, "w"))
+def readable(ref, variable):
+    """A private registry's reader must have logged in to it."""
+    registry = ref.removeprefix("oci://").split("/", 1)[0]
+    if registry in state.get("private", []) and registry not in logins(variable):
+        fail(f"UNAUTHORIZED: authentication required: {ref}")
 def option(name):
     return args[args.index(name) + 1] if name in args else None
 def put(ref, digest):
@@ -130,13 +152,15 @@ if tool == "aws":
         fail("stub aws: " + " ".join(args))
 elif tool == "crane":
     if args[:2] == ["auth", "login"]:
-        sys.stdin.read()
+        login("DOCKER_CONFIG", args[2])
     elif args[0] == "digest":
+        readable(args[1], "DOCKER_CONFIG")
         found = held(args[1])
         if found is None:
             fail(f"MANIFEST_UNKNOWN: {args[1]}")
         print(found)
     elif args[0] == "copy":
+        readable(args[1], "DOCKER_CONFIG")
         found = held(args[1])
         if found is None:
             fail(f"MANIFEST_UNKNOWN: {args[1]}")
@@ -149,6 +173,7 @@ elif tool == "crane":
         put(f'{re.sub(r"[:@][^/]+$", "", args[1])}:{args[2]}', found)
     elif args[0] == "config":
         # crane config <reference>: the image's or the chart's config, as the state gives it by digest.
+        readable(args[1], "DOCKER_CONFIG")
         found = held(args[1])
         if found is None:
             fail(f"MANIFEST_UNKNOWN: {args[1]}")
@@ -157,10 +182,11 @@ elif tool == "crane":
         fail("stub crane: " + " ".join(args))
 elif tool == "helm":
     if args[:2] == ["registry", "login"]:
-        sys.stdin.read()
+        login("HELM_REGISTRY_CONFIG", args[2])
     elif args[0] == "pull":
         # helm pull oci://<repository>@<digest> --destination <dir>: the package, <name>@sha256-<hex>.tgz,
         # here the text of its Chart.yaml.
+        readable(args[1], "HELM_REGISTRY_CONFIG")
         ref = args[1].removeprefix("oci://")
         found = held(ref)
         if found is None:
@@ -216,14 +242,20 @@ class Scratch:
         return self.git("rev-parse", "HEAD")
 
     def run(self, script, *args, **env):
+        return self.bash([os.path.join(self.root, script), *args], env)
+
+    def run_bash(self, commands, **env):
+        """The commands, as bash -c runs them, in the scratch's environment."""
+        return self.bash(["-c", commands], env)
+
+    def bash(self, arguments, env):
         with open(self.state_file, "w") as f:
             json.dump(self.state, f)
         environment = {key: value for key, value in os.environ.items()
                        if not key.startswith(("COLVENNA_", "AWS_", "DORIS_"))}
         environment.update(SETTINGS, PATH=self.bin + os.pathsep + os.environ["PATH"], STUB_STATE=self.state_file,
                            **env)
-        result = subprocess.run(["bash", os.path.join(self.root, script), *args], env=environment,
-                                capture_output=True, text=True, timeout=120)
+        result = subprocess.run(["bash", *arguments], env=environment, capture_output=True, text=True, timeout=120)
         with open(self.state_file) as f:
             self.state = json.load(f)
         return result

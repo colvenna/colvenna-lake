@@ -338,31 +338,39 @@ PY
 }
 
 # assert_catalog_source: a source install's catalog step can fetch the Colvenna Catalog release this
-# tree pins (deploy/images/colvenna-catalog.json): COLVENNA_RELEASE_REGISTRY is given, the release
-# registry its maintainers give, and the caller can read the pinned image and chart there by digest
-# (colvenna-catalog-release/..., as the pin names them) with pull rights alone (ecr:BatchGetImage),
-# as fetch-catalog.sh will. A release install takes them from its candidate's copies instead, which
-# check-release.sh checks.
+# tree pins (deploy/images/colvenna-catalog.json) as fetch-catalog.sh will: its source
+# (COLVENNA_CATALOG_REGISTRY, else the pin's registry, GitHub Container Registry) gives the pinned
+# image and chart by digest, an ECR one to the caller with pull rights alone (ecr:BatchGetImage), any
+# other to an anonymous reader. A release install takes them from its candidate's copies instead,
+# which check-release.sh checks.
 assert_catalog_source() {
-  local tool candidate parts kind repository digest held
+  local tool candidate parts source account region kind ref digest held
   tool="$(dirname "${BASH_SOURCE[0]}")/../release/manifest.py"
   candidate="$(python3 "$tool" catalog candidate)" || return 1
-  if [[ -z "${COLVENNA_RELEASE_REGISTRY:-}" ]]; then
-    echo "No source of Colvenna Catalog $candidate (deploy/images/colvenna-catalog.json): give" \
-      "COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com, the release registry that holds" \
-      "its image and chart (colvenna-catalog-release/...)" >&2
-    return 1
+  parts="$(python3 "$tool" catalog-source "${COLVENNA_CATALOG_REGISTRY:-}")" || return 1
+  IFS=$'\t' read -r source account region <<<"$parts"
+  if [[ -z "$region" ]]; then
+    if ! held="$(python3 "$tool" catalog-held "$source" 2>&1)"; then
+      echo "No Colvenna Catalog $candidate (deploy/images/colvenna-catalog.json) for an anonymous reader in" \
+        "$source: $held" >&2
+      if [[ -z "${COLVENNA_CATALOG_REGISTRY:-}" ]]; then
+        echo "Until it is public there, give COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>], a registry" \
+          "holding the same digests, e.g. the maintainers' release registry" \
+          "<account>.dkr.ecr.<region>.amazonaws.com/colvenna-catalog-release" >&2
+      fi
+      return 1
+    fi
+    return 0
   fi
-  parts="$(python3 "$tool" registry "$COLVENNA_RELEASE_REGISTRY")" || return 1
   for kind in image chart; do
-    repository="$(python3 "$tool" catalog "$kind.repository")" digest="$(python3 "$tool" catalog "$kind.digest")"
-    held="$(aws_read "Colvenna Catalog $candidate's $kind in $COLVENNA_RELEASE_REGISTRY" ecr batch-get-image \
-      --region "${parts#*$'\t'}" --registry-id "${parts%%$'\t'*}" --repository-name "$repository" \
+    ref="$source/$(python3 "$tool" catalog "$kind.repository")" digest="$(python3 "$tool" catalog "$kind.digest")"
+    held="$(aws_read "Colvenna Catalog $candidate's $kind in $source" ecr batch-get-image \
+      --region "$region" --registry-id "$account" --repository-name "${ref#*/}" \
       --image-ids "imageDigest=$digest" --accepted-media-types "${MANIFEST_TYPES[@]}" \
       --query 'length(images)' --output text)" || return 1
     if [[ "$held" != 1 ]]; then
-      echo "$COLVENNA_RELEASE_REGISTRY holds no $repository@$digest, Colvenna Catalog $candidate's $kind" \
-        "(deploy/images/colvenna-catalog.json): give the release registry that does" >&2
+      echo "COLVENNA_CATALOG_REGISTRY: ${source%%/*} holds no ${ref#*/}@$digest, Colvenna Catalog $candidate's" \
+        "$kind (deploy/images/colvenna-catalog.json): give a registry that does" >&2
       return 1
     fi
   done

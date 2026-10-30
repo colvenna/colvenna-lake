@@ -13,10 +13,15 @@ is the installer's setting COLVENNA_RELEASE_REGISTRY, whichever account and regi
 
 Colvenna Catalog is a product of its own (#295), and this tree runs the release of it that
 deploy/images/colvenna-catalog.json pins: the catalog's repository and candidate, the commit its tag
-points at, the commit its image and chart were built from (built_from), and both by digest in the
-catalog's release registry (colvenna-catalog-release/...), the chart with its version. Its
-schema_version is the catalog schema that release's server applies (its migrations V1..Vn at
-built_from). A candidate keeps a copy of both, the same digests, in its own release registry
+points at, the commit its image and chart were built from (built_from), the registry the catalog
+publishes them in (registry: GitHub Container Registry, ghcr.io/colvenna, read anonymously) and both
+by their repository there and digest (ghcr.io/colvenna/colvenna-catalog and
+ghcr.io/colvenna/charts/colvenna-catalog), the chart with its version. Its schema_version is the
+catalog schema that release's server applies (its migrations V1..Vn at built_from). The setting
+COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>] puts another registry in place of the pin's, holding
+the same digests under the same repository names (catalog-source): the maintainers' private release
+registry, for a candidate's acceptance before the catalog is public, read with the AWS credentials.
+A candidate keeps a copy of both, the same digests, in its own release registry
 (colvenna-lake-release/colvenna-catalog and colvenna-lake-release/charts/colvenna-catalog, tagged
 <candidate>), and records them, the pin's fields beside them, under catalog (schema 3).
 
@@ -60,6 +65,16 @@ usage:
                                               (its OCI config, Chart.yaml as JSON) is the pinned
                                               catalog release's: built from built_from, for
                                               linux/amd64, the chart's name and version
+  manifest.py catalog-source [<registry>[/<prefix>]]
+                                              where a source install takes the pinned catalog
+                                              release from: the given one (COLVENNA_CATALOG_REGISTRY),
+                                              else the pin's registry; and, tab-separated after it,
+                                              the account and region of an ECR one, which is read
+                                              with the AWS credentials (nothing: read anonymously)
+  manifest.py catalog-held <registry>[/<prefix>]
+                                              whether that registry gives the pinned image and chart
+                                              by digest to an anonymous reader (the OCI
+                                              distribution API)
 Problems go to stderr, with exit status 1.
 """
 import glob
@@ -68,6 +83,9 @@ import json
 import os
 import re
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
 SCHEMA = 3
 # The release registry's stack (deploy/aws/src/release-stack.ts's RELEASE_STACK) and its ECR
@@ -113,12 +131,24 @@ THIRD_PARTY_SCOPES = ("platform", "fixtures")
 # not move between candidates). The catalog's is its release's (CATALOG_*).
 CHARTS = ("colvenna-bi", "colvenna-console", "colvenna-monitoring", "colvenna-operator")
 # Colvenna Catalog's release (#295), pinned in deploy/images/colvenna-catalog.json: its server image
-# and Helm chart in the catalog's release registry, which COLVENNA_RELEASE_REGISTRY names too, and the
-# label and annotation that say which commit they were built from. A candidate copies both into its
-# own release registry (key: repository under PREFIX), tagged <candidate> as the product's images are.
+# and Helm chart, which the catalog publishes in GitHub Container Registry (CATALOG_REGISTRY, public:
+# read anonymously) under these repository names, and the label and annotation that say which commit
+# they were built from. Another registry may stand in for it (COLVENNA_CATALOG_REGISTRY, catalog-source)
+# with the same names under its prefix. A candidate copies both into its own release registry (key:
+# repository under PREFIX), tagged <candidate> as the product's images are.
 CATALOG_PIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "images", "colvenna-catalog.json")
-CATALOG_REPOSITORIES = {"image": "colvenna-catalog-release/colvenna-catalog",
-                        "chart": "colvenna-catalog-release/charts/colvenna-catalog"}
+CATALOG_REGISTRY = "ghcr.io/colvenna"
+CATALOG_REPOSITORIES = {"image": "colvenna-catalog", "chart": "charts/colvenna-catalog"}
+# A registry and prefix to read the release from: a host (lowercase, a port allowed) and repository
+# path segments as OCI names them; an ECR registry among them is one in a standard region.
+CATALOG_SOURCE_REGISTRY = re.compile(r"^(?P<host>[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?)"
+                                     r"(?P<path>(/[a-z0-9]+([._-][a-z0-9]+)*)*)$")
+ECR_HOST = re.compile(r"\.dkr\.ecr\.[^.]+\.amazonaws\.com(\.cn)?$")
+# The manifest types the release's image (an image or an index) and chart (an OCI image manifest) may
+# have, as lib/preflight.sh's MANIFEST_TYPES.
+MANIFEST_TYPES = ("application/vnd.oci.image.index.v1+json", "application/vnd.oci.image.manifest.v1+json",
+                  "application/vnd.docker.distribution.manifest.list.v2+json",
+                  "application/vnd.docker.distribution.manifest.v2+json")
 CATALOG_IMAGES = {"catalog": "colvenna-catalog", "catalog-chart": "charts/colvenna-catalog"}
 CATALOG_CHART = "colvenna-catalog"
 CATALOG_PLATFORM = "linux/amd64"
@@ -242,7 +272,7 @@ def catalog_pin_problems(pin):
         if not ok:
             found.append(what)
 
-    if not fields(pin, "", ("repository", "candidate", "tag_commit", "built_from", "image", "chart",
+    if not fields(pin, "", ("repository", "candidate", "tag_commit", "built_from", "registry", "image", "chart",
                             "schema_version")):
         return found
     need(isinstance(pin["repository"], str) and CATALOG_SOURCE.fullmatch(pin["repository"]) is not None,
@@ -254,15 +284,16 @@ def catalog_pin_problems(pin):
         need(isinstance(pin[key], str) and SHA.fullmatch(pin[key]) is not None, f"{key}: not a full commit SHA")
     # The catalog's tag is a commit of its own on top of built_from (release/<candidate>/ added).
     need(pin["tag_commit"] != pin["built_from"], "tag_commit: the same as built_from, not the tag's commit")
+    need(pin["registry"] == CATALOG_REGISTRY, f"registry: {pin['registry']!r}, not {CATALOG_REGISTRY}")
     if fields(pin["image"], "image", ("repository", "digest", "platform")):
         need(pin["image"]["repository"] == CATALOG_REPOSITORIES["image"],
-             f"image.repository: not {CATALOG_REPOSITORIES['image']}")
+             f"image.repository: {pin['image']['repository']!r}, not {CATALOG_REPOSITORIES['image']}")
         need(isinstance(pin["image"]["digest"], str) and DIGEST.fullmatch(pin["image"]["digest"]) is not None,
              "image.digest: not sha256:<64 hex>")
         need(pin["image"]["platform"] == CATALOG_PLATFORM, f"image.platform: not {CATALOG_PLATFORM}")
     if fields(pin["chart"], "chart", ("repository", "name", "version", "digest")):
         need(pin["chart"]["repository"] == CATALOG_REPOSITORIES["chart"],
-             f"chart.repository: not {CATALOG_REPOSITORIES['chart']}")
+             f"chart.repository: {pin['chart']['repository']!r}, not {CATALOG_REPOSITORIES['chart']}")
         need(pin["chart"]["name"] == CATALOG_CHART, f"chart.name: not {CATALOG_CHART}")
         # A catalog release packages its chart as its candidate's name without the v.
         need(isinstance(candidate, str) and pin["chart"]["version"] == candidate[1:],
@@ -329,6 +360,95 @@ def catalog_check(kind, config, pin):
     else:
         raise ValueError(f"catalog-check: image or chart, not {kind!r}")
     return found
+
+
+def catalog_source(registry=None, pin=None):
+    """Where a source install takes the pinned catalog release from: (prefix, account, region). The
+    prefix is the registry and path its repository names (the pin's image.repository and
+    chart.repository) follow: COLVENNA_CATALOG_REGISTRY when given, else the pin's registry. An ECR
+    registry's account and region say that it is read with the AWS credentials, as the maintainers'
+    private release registry is; any other is read anonymously (account and region None). ValueError if
+    the setting is not a registry and prefix, or is an ECR registry outside a standard region."""
+    if not registry:
+        return (pin or catalog_pin())["registry"], None, None
+    found = CATALOG_SOURCE_REGISTRY.fullmatch(registry)
+    if found is None:
+        raise ValueError(f"COLVENNA_CATALOG_REGISTRY={registry!r}: a registry and prefix the catalog release's"
+                         " repositories follow, <registry>[/<prefix>], without a scheme, tag or digest, e.g."
+                         " <account>.dkr.ecr.<region>.amazonaws.com/colvenna-catalog-release")
+    if ECR_HOST.search(found["host"]):
+        ecr = REGISTRY.fullmatch(found["host"])
+        if ecr is None:
+            raise ValueError(f"COLVENNA_CATALOG_REGISTRY={registry!r}: an ECR registry is"
+                             " <account>.dkr.ecr.<region>.amazonaws.com in a standard region")
+        return registry, ecr[1], ecr[2]
+    return registry, None, None
+
+
+def catalog_held(prefix, pin=None, timeout=30):
+    """What keeps an anonymous reader from the pinned release's image and chart, by digest, in the
+    registry and prefix: an empty list when it gets both. Read as crane and Helm read a registry with
+    no credentials (the OCI distribution API): the manifest's HEAD, after the registry's Bearer token
+    challenge when it makes one; plain HTTP only for a registry on this host, as theirs."""
+    pin = pin or catalog_pin()
+    host, _, namespace = catalog_source(prefix, pin)[0].partition("/")
+    base = f"{'http' if host.split(':')[0] in ('localhost', '127.0.0.1') else 'https'}://{host}"
+    found = []
+    for kind in ("image", "chart"):
+        repository, digest = pin[kind]["repository"], pin[kind]["digest"]
+        problem = anonymous_manifest(base, "/".join(p for p in (namespace, repository) if p), digest, timeout)
+        if problem:
+            found.append(f"{prefix}/{repository}@{digest}, the {kind}: {problem}")
+    return found
+
+
+def anonymous_manifest(base, repository, digest, timeout):
+    """None if the registry at base gives an anonymous reader the manifest repository@digest, else
+    what it answered."""
+    url = f"{base}/v2/{repository}/manifests/{digest}"
+    accept = {"Accept": ", ".join(MANIFEST_TYPES)}
+
+    def head(headers):
+        return urllib.request.urlopen(urllib.request.Request(url, headers=headers, method="HEAD"), timeout=timeout)
+
+    def refused(error):
+        try:
+            code = json.loads(error.read() or b"{}")["errors"][0]["code"]
+        except (ValueError, KeyError, IndexError, TypeError):
+            code = error.reason
+        said = {401: "refused to an anonymous reader", 403: "refused to an anonymous reader",
+                404: "not there"}.get(error.code, "")
+        return f"HTTP {error.code} {code}" + (f": {said}" if said else "")
+
+    try:
+        try:
+            response = head(accept)
+        except urllib.error.HTTPError as error:
+            challenge = error.headers.get("WWW-Authenticate", "")
+            if error.code != 401 or not challenge.lower().startswith("bearer "):
+                raise
+            # The registry's anonymous token for pulling the repository, as its challenge says.
+            params = dict(re.findall(r'(\w+)="([^"]*)"', challenge))
+            realm = params.get("realm", "")
+            if urllib.parse.urlsplit(realm).scheme not in ("https", "http"):
+                return f"HTTP 401: a token challenge without an HTTP realm ({challenge})"
+            query = {key: params[key] for key in ("service", "scope") if key in params}
+            query.setdefault("scope", f"repository:{repository}:pull")
+            with urllib.request.urlopen(f"{realm}?{urllib.parse.urlencode(query)}", timeout=timeout) as answer:
+                body = json.load(answer)
+            token = body.get("token") or body.get("access_token") if isinstance(body, dict) else None
+            if not token:
+                return "the registry's token endpoint gave no token"
+            response = head({**accept, "Authorization": f"Bearer {token}"})
+    except urllib.error.HTTPError as error:
+        return refused(error)
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        return f"cannot read it: {getattr(error, 'reason', error)}"
+    with response:
+        answered = response.headers.get("Docker-Content-Digest")
+    if answered and answered != digest:
+        return f"it answers {answered}"
+    return None
 
 
 def source_tag(candidate):
@@ -780,6 +900,13 @@ def main(argv):
                 raise ValueError(f"deploy/images/colvenna-catalog.json: no {args[0]}")
             value = value[field]
         print(value if isinstance(value, str) else json.dumps(value, indent=None if args else 2))
+    elif command == "catalog-source" and len(args) <= 1:
+        prefix, account, region = catalog_source(args[0] if args else None)
+        print("\t".join([prefix] + ([account, region] if account else [])))
+    elif command == "catalog-held" and len(args) == 1:
+        found = catalog_held(args[0])
+        if found:
+            raise ValueError("; ".join(found))
     elif command == "catalog-check" and len(args) == 2:
         found = catalog_check(args[0], load(args[1]), catalog_pin())
         if found:

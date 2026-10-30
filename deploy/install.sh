@@ -30,9 +30,11 @@
 #               COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com (required with it;
 #               the manifest names no registry); nothing is built. Without it, every image is built
 #               here from this commit (the development path), but Colvenna Catalog's, its release's,
-#               which is copied from COLVENNA_RELEASE_REGISTRY (required then too, the registry that
-#               holds that release), and the third-party ones, copied from COLVENNA_RELEASE_REGISTRY
-#               when given and holding them, else from upstream.
+#               which is copied by digest from where the catalog publishes it, GitHub Container
+#               Registry, anonymously (or from COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>] when
+#               given, a registry holding the same digests: an ECR one is read with the AWS
+#               credentials), and the third-party ones, copied from COLVENNA_RELEASE_REGISTRY when
+#               given and holding them, else from upstream.
 #   --list      prints the steps and exits; it needs COLVENNA_ENV alone, none of the settings
 #   --from      starts at that step, the ones before it done (at the same commit)
 #   --only      runs that one step
@@ -334,7 +336,7 @@ for s in "${STEPS[@]}"; do
     printf '%s\tFAILED\t%s\n' "$name" "$((SECONDS - begin))" | tee -a "$ev/steps.tsv"
     tail -20 "$ev/$name.log" >&2
     echo "Step $name failed; its log: $ev/$name.log. Fix it, then:" \
-      "COLVENNA_ENV=$COLVENNA_ENV ${COLVENNA_RELEASE_REGISTRY:+COLVENNA_RELEASE_REGISTRY=$COLVENNA_RELEASE_REGISTRY }deploy/install.sh" \
+      "COLVENNA_ENV=$COLVENNA_ENV ${COLVENNA_RELEASE_REGISTRY:+COLVENNA_RELEASE_REGISTRY=$COLVENNA_RELEASE_REGISTRY }${COLVENNA_CATALOG_REGISTRY:+COLVENNA_CATALOG_REGISTRY=$COLVENNA_CATALOG_REGISTRY }deploy/install.sh" \
       "${again[*]} --from $name" >&2
     exit 1
   fi

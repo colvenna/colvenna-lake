@@ -12,9 +12,10 @@
 #   2. copies each image into the release registry (deploy-registry.sh: colvenna-lake-release/... in the
 #      caller's account and COLVENNA_RELEASE_REGION, default us-west-2) by digest, tagged <candidate> or
 #      <candidate>-<variant> (manifest.py names), the third-party ones from the environment's copies
-#      into colvenna-lake-release/third-party as <candidate>-<name>, the catalog release's image and
-#      chart (an OCI artifact) from the catalog's release repositories in COLVENNA_RELEASE_REGISTRY
-#      into colvenna-lake-release/colvenna-catalog and colvenna-lake-release/charts/colvenna-catalog,
+#      into colvenna-lake-release/third-party as <candidate>-<name>, the catalog release's image (from
+#      the environment's copy) and chart (an OCI artifact, from where a source install fetches it:
+#      COLVENNA_CATALOG_REGISTRY when given, else GitHub Container Registry, anonymously) into
+#      colvenna-lake-release/colvenna-catalog and colvenna-lake-release/charts/colvenna-catalog,
 #      so the candidate needs no other registry, and builds the colvenna CLI's binaries
 #      (colvenna-cli/check.sh build) into one more image there;
 #   3. writes release/<candidate>/manifest.json (manifest.py assemble) and notes.md, the release
@@ -32,10 +33,12 @@
 # the same digest (the CLI's: the same binaries as this build), and is kept. Evidence (what was
 # checked and copied, and by whom) goes to RELEASE_EVIDENCE, by default
 # deploy/.state/<env>/release-<candidate>/.
-# Usage: COLVENNA_ENV=<env> COLVENNA_RELEASE_REGISTRY=<registry> [COLVENNA_RELEASE_REGION=<region>] \
+# Usage: COLVENNA_ENV=<env> [COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>]] [COLVENNA_RELEASE_REGION=<region>] \
 #          [RELEASE_REGIONS=<region>,<region>...] deploy/scripts/release/make-manifest.sh <candidate>
-#   COLVENNA_RELEASE_REGISTRY  the registry holding the Colvenna Catalog release this commit pins
-#                            (the one the environment's source install fetched it from)
+#   COLVENNA_CATALOG_REGISTRY  a registry holding the Colvenna Catalog release this commit pins in
+#                            place of the pin's, GitHub Container Registry (fetch-catalog.sh's; the
+#                            one the environment's source install fetched it from): an ECR one is
+#                            read with the AWS credentials, any other anonymously
 #   COLVENNA_RELEASE_REGION  the release registry's region (default us-west-2)
 #   RELEASE_REGIONS          the standard regions the candidate is accepted in, two or more
 #                            (configurations.regions; default us-west-2,us-east-2)
@@ -77,9 +80,11 @@ if ! standard_region "$release_region"; then
   exit 1
 fi
 release_registry="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$release_region.amazonaws.com"
-# The Colvenna Catalog release this commit pins, and the registry that holds it.
-catalog_registry="${COLVENNA_RELEASE_REGISTRY:?COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com: the registry holding the Colvenna Catalog release this commit pins}"
-catalog_parts="$(python3 "$tool" registry "$catalog_registry")"
+# The Colvenna Catalog release this commit pins, and where its chart is copied from: as a source
+# install fetches it (fetch-catalog.sh), with the region of an ECR registry, which is read with the
+# AWS credentials (none: anonymously).
+catalog_parts="$(python3 "$tool" catalog-source "${COLVENNA_CATALOG_REGISTRY:-}")"
+IFS=$'\t' read -r catalog_source _ catalog_region <<<"$catalog_parts"
 catalog() { python3 "$tool" catalog "$1"; }
 catalog_candidate="$(catalog candidate)"
 release_stack="$(python3 "$tool" stack)"
@@ -138,7 +143,7 @@ if [[ "$(fetched candidate)" != "$catalog_candidate" || "$(fetched chart_digest)
   exit 1
 fi
 ref[catalog]="$(fetched image)"
-ref[catalog-chart]="$catalog_registry/$(catalog chart.repository)@$(catalog chart.digest)"
+ref[catalog-chart]="$catalog_source/$(catalog chart.repository)@$(catalog chart.digest)"
 for name in operator mysql postgres mongodb sql kafka; do
   key="jobs-$name"
   [[ "$name" == operator ]] && key=operator
@@ -280,10 +285,11 @@ if [[ "$release_registry" != "$ECR_REGISTRY" ]]; then
   aws ecr get-login-password --region "$release_region" \
     | crane auth login "$release_registry" -u AWS --password-stdin >/dev/null
 fi
-if [[ "$catalog_registry" != "$ECR_REGISTRY" && "$catalog_registry" != "$release_registry" ]]; then
-  aws ecr get-login-password --region "${catalog_parts#*$'\t'}" \
-    | crane auth login "$catalog_registry" -u AWS --password-stdin >/dev/null
+if [[ -n "$catalog_region" && "${catalog_source%%/*}" != "$ECR_REGISTRY" && "${catalog_source%%/*}" != "$release_registry" ]]; then
+  aws ecr get-login-password --region "$catalog_region" \
+    | crane auth login "${catalog_source%%/*}" -u AWS --password-stdin >/dev/null
 fi
+log "catalog-chart from $catalog_source$([[ -z "$catalog_region" ]] && echo ', anonymously')"
 # release_digest <repository> <tag>: the digest the release registry holds under that tag, or nothing.
 release_digest() {
   tag_digest "colvenna-lake-release/$1" "$2" --region "$release_region"
