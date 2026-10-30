@@ -1,0 +1,15 @@
+{{define "home"}}{{template "head" .}}
+<h1>你好，{{.User.Username}}</h1>
+<section>
+  <h2>当前账号</h2>
+  <dl>
+    <dt>用户名</dt><dd>{{.User.Username}}</dd>
+    {{if .User.Email}}<dt>邮箱</dt><dd>{{.User.Email}}</dd>{{end}}
+    <dt>角色</dt><dd>{{range $i, $r := .User.Roles}}{{if $i}}、{{end}}{{$r.Label}}{{end}}</dd>
+    <dt>标识</dt><dd><code>{{.User.Sub}}</code></dd>
+  </dl>
+  <p class="note">登录状态每 5 分钟向身份源刷新一次：账号被停用或在别处退出登录后，最迟 5 分钟内失效。</p>
+</section>
+{{if .Operates}}<section><h2>运维</h2><p><a href="/pipeline">流水线全景</a>：每个数据源、湖表、分层作业与看板的状态、指标、告警，以及出问题的环节。</p>
+<p><a href="/operations">受控操作</a>：colvenna CLI 能做的变更，以你的身份执行，留下审计；删除、回刷与合规删除先确认。</p></section>{{end}}
+{{template "foot" .}}{{end}}

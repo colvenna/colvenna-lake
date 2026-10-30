@@ -1,0 +1,48 @@
+flowchart LR
+    USER["浏览器用户<br/>BI 用户 · 运维"]
+    CLI["colvenna CLI / 编排器<br/>Airflow 等 · 经 Kubernetes API"]
+    DB[("业务数据库<br/>MySQL / PostgreSQL / MongoDB")]
+    EV["日志 / 埋点<br/>SDK · Agent"]
+    KAFKA[["Kafka<br/>MSK 或自建"]]
+
+    subgraph WEB["Web 入口与界面"]
+        ALB["公网 ALB + Cognito<br/>TLS · 口令 + TOTP · 按组映射角色"]
+        CONSOLE["管理控制台<br/>流水线全景 · 受控操作"]
+        BI["BI 查询界面<br/>Apache Superset · 每人一个 Doris 用户"]
+    end
+
+    subgraph EKS_W["EKS · 写入与维护"]
+        OP["colvenna-operator<br/>声明 → FlinkDeployment · Job"]
+        ING["接入作业 (Flink)<br/>CDC action · Kafka 事件流 (DataStream)"]
+        LAY["分层加工作业 (Flink)<br/>LakeTable · ODS → DWD → DWS"]
+        TASK["批任务 LakeTask (Flink)<br/>Kubernetes Job · 压缩 · 过期 · 回刷 · 校验"]
+    end
+
+    CAT["colvenna-catalog<br/>Paimon REST catalog · PostgreSQL 后端"]
+    S3[("Amazon S3 · Paimon 表<br/>ODS / DWD / DWS · snapshot · manifest")]
+
+    subgraph EKS_Q["EKS · 查询与开放"]
+        DORIS["查询引擎（基于 Apache Doris 4.1.4）<br/>Apache Doris Operator · 存算一体"]
+        IREST["Iceberg REST Catalog<br/>Polaris · 可选"]
+    end
+
+    EXT["外部 Iceberg 读端<br/>Spark · Trino"]
+
+    USER -- HTTPS --> ALB
+    ALB -- 登录后转发 --> CONSOLE
+    ALB -- 登录后转发 --> BI
+    CONSOLE -. 提交声明 · 读状态 .-> OP
+    CLI -. 提交声明 · 触发 LakeTask .-> OP
+    OP -. 身份 · 授权 .-> CAT
+    DB -- 直读 binlog / WAL / oplog --> ING
+    EV --> KAFKA
+    KAFKA -- 消费事件 --> ING
+    ING -- checkpoint 提交 --> S3
+    ING -. 元数据 · 提交 · 临时凭证 .-> CAT
+    LAY -- consumer-id 流读 · 写回 --> S3
+    TASK -. 压缩 · 过期 · 回刷 .-> S3
+    BI -- 以本人身份查询 --> DORIS
+    DORIS -- 直读 --> S3
+    DORIS -. 加载表 · 凭证 .-> CAT
+    S3 -. Iceberg 元数据 .-> IREST
+    EXT -. 只读 .-> IREST

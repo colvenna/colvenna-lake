@@ -1,0 +1,11 @@
+# The maintainers' deployment values that redaction.py looks for in every clone and in CI (#248),
+# as the first hex digits of SHA-256("colvenna-lake-redaction:" + the value in lowercase). The values are
+# never written here. A line is <account|text> <hex digits> <what the value is>; make one with
+#   redaction.py --hash < a file with the value
+# An account keeps 6 digits, so that the line does not give it away; any other value keeps 16.
+# Not here: values one can guess and then check against a hash (the hosted zone's domain, built on
+# the repository owner's public name; the executor's role name). The settings in deploy/.state
+# hold them on the maintainers' machines, where the check reads them.
+account 559928 the maintainers' work account
+text a171d7feb63458b2 the ID of the maintainers' hosted zone
+text 993aaa5192dfe6a6 the EC2 instance of the maintainers' executor

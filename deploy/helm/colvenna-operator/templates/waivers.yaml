@@ -1,0 +1,74 @@
+{{- /*
+Who accepted a quality check's failed rules (LakeWaiver) is the Kubernetes user who created the
+waiver: the API server refuses one whose colvenna-lake.io/approved-by annotation names anyone else, and
+any later change of it. The console's controlled operations act as its own users, colvenna-console:admin
+or colvenna-console:operator, with the signed-in person as the user extra colvenna-lake.io/person; for
+them the approver is <user>/<person> (only the console may impersonate those users and that
+extra). The operator takes the approver from that annotation. Who may waive at all is RBAC: bind
+the ClusterRole below to the data owners, in their namespaces.
+*/ -}}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ .Release.Name }}-waiver-approver
+  labels:
+    {{- include "colvenna-operator.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [colvenna-lake.io]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE]
+        resources: [lakewaivers]
+  variables:
+    - name: requester
+      expression: >-
+        request.userInfo.username in ['colvenna-console:admin', 'colvenna-console:operator'] &&
+        has(request.userInfo.extra) && 'colvenna-lake.io/person' in request.userInfo.extra &&
+        size(request.userInfo.extra['colvenna-lake.io/person']) == 1 ?
+        request.userInfo.username + '/' + request.userInfo.extra['colvenna-lake.io/person'][0] :
+        request.userInfo.username
+    - name: approver
+      expression: >-
+        has(object.metadata.annotations) &&
+        'colvenna-lake.io/approved-by' in object.metadata.annotations ?
+        object.metadata.annotations['colvenna-lake.io/approved-by'] : ''
+    - name: approverBefore
+      expression: >-
+        oldObject != null && has(oldObject.metadata.annotations) &&
+        'colvenna-lake.io/approved-by' in oldObject.metadata.annotations ?
+        oldObject.metadata.annotations['colvenna-lake.io/approved-by'] : ''
+  validations:
+    - expression: request.operation != 'CREATE' || variables.approver == variables.requester
+      messageExpression: >-
+        'annotation colvenna-lake.io/approved-by must be the user creating the waiver, ' +
+        variables.requester
+    - expression: request.operation != 'UPDATE' || variables.approver == variables.approverBefore
+      message: annotation colvenna-lake.io/approved-by does not change
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ .Release.Name }}-waiver-approver
+  labels:
+    {{- include "colvenna-operator.labels" . | nindent 4 }}
+spec:
+  policyName: {{ .Release.Name }}-waiver-approver
+  validationActions: [Deny]
+---
+# For data owners: waive the failed rules of a check, and read what they waive.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-waiver-approver
+  labels:
+    {{- include "colvenna-operator.labels" . | nindent 4 }}
+rules:
+  # `colvenna waive` server-side applies the waiver: patch, and create for a new one.
+  - apiGroups: [colvenna-lake.io]
+    resources: [lakewaivers]
+    verbs: [create, patch, get, list, watch, delete]
+  - apiGroups: [colvenna-lake.io]
+    resources: [laketasks, lakequalities]
+    verbs: [get, list, watch]

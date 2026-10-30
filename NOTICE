@@ -1,0 +1,42 @@
+Colvenna Lake
+Copyright 2026 Colvenna Lake contributors
+
+This repository contains the Colvenna Lake source code, deployment code,
+product documentation, engineering designs, and original brand assets,
+licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party components keep their own licenses. See
+THIRD_PARTY_NOTICES.md for the third-party material in this repository,
+the third-party content of the product images, the third-party images the
+release copies unmodified, and the components' direct dependencies.
+
+The interactive architecture diagram
+(docs/design/diagrams/colvenna-lake-architecture.html) includes Archify
+runtime code:
+Copyright (c) 2026 tt-a1i (Archify)
+Copyright (c) 2025 Cocoon AI
+These portions retain their MIT license. See THIRD_PARTY_NOTICES.md
+and third_party/archify.LICENSE. The same file embeds subsets of the JetBrains Mono
+font, Copyright 2020 The JetBrains Mono Project Authors, under the SIL Open
+Font License 1.1, whose full text the file carries.
+
+deploy/scripts/doris/fe-default.conf and deploy/scripts/doris/be-default.conf
+are configuration files of Apache Doris, licensed to The Apache Software
+Foundation under the Apache License, Version 2.0:
+
+  Apache Doris
+  Copyright 2018-2026 The Apache Software Foundation
+
+  This product includes software developed at
+  The Apache Software Foundation (http://www.apache.org/).
+
+  Based on source code originally developed by
+  Baidu (http://www.baidu.com/).
+
+The query engine image (query-engine) is a modified build based on
+Apache Doris 4.1.4. It is not a release of The Apache Software Foundation.
+
+Apache, Apache Paimon, Apache Flink, Apache Doris, Apache Superset and the
+other Apache project names used in this repository are trademarks of The
+Apache Software Foundation. Colvenna Lake is not a project of The Apache
+Software Foundation and is not endorsed by it.

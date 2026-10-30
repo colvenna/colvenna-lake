@@ -1,0 +1,33 @@
+{{- range .Values.users }}
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaUser
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "colvenna-dev-kafka.labels" $ | nindent 4 }}
+spec:
+  authentication:
+    type: scram-sha-512
+  authorization:
+    type: simple
+    acls:
+      {{- range .write }}
+      - resource: {type: topic, name: {{ . }}, patternType: literal}
+        operations: [Write, Describe]
+      {{- end }}
+      {{- range .read }}
+      # DescribeConfigs: a CDC reader checks that the topic is not compacted.
+      - resource: {type: topic, name: {{ . }}, patternType: literal}
+        operations: [Read, Describe, DescribeConfigs]
+      {{- end }}
+      {{- range .readPrefixes }}
+      # Every topic under the prefix, existing or not: the user may learn that one is missing.
+      - resource: {type: topic, name: {{ . }}, patternType: prefix}
+        operations: [Read, Describe]
+      {{- end }}
+      {{- range .groups }}
+      - resource: {type: group, name: {{ . }}, patternType: prefix}
+        operations: [Read]
+      {{- end }}
+{{- end }}

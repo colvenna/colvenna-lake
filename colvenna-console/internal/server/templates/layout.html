@@ -1,0 +1,26 @@
+{{define "head"}}<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Colvenna Lake 控制台</title>
+<link rel="stylesheet" href="/static/console.css">
+</head>
+<body>
+<header>
+  <span class="brand">Colvenna Lake 控制台</span>
+  {{if .User.Username}}
+  <form method="post" action="/logout" class="logout">
+    <span class="who">{{.User.Username}}</span>
+    <button type="submit">退出登录</button>
+  </form>
+  {{end}}
+</header>
+<main>
+{{end}}
+
+{{define "foot"}}
+</main>
+</body>
+</html>
+{{end}}

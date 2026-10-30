@@ -1,0 +1,60 @@
+# Image pinned by digest; the install script fills it from the ECR push.
+image:
+  repository: ""
+  digest: ""
+
+replicas: 2
+
+# Kubernetes identity; the IRSA role is the entry stack's ConsoleRoleArn.
+serviceAccount:
+  name: colvenna-console
+  roleArn: ""
+
+# The environment's AWS region; the install script sets it (deploy/env.sh's COLVENNA_REGION).
+region: ""
+
+# The entry the console sits behind (the entry stack's outputs).
+entry:
+  # The console's address, e.g. https://console.colvenna-uat.example.com
+  publicUrl: ""
+  # The user pool's sign-in domain, e.g. https://<prefix>.auth.<region>.amazoncognito.com
+  signInUrl: ""
+  userPoolId: ""
+  clientId: ""
+  # The load balancer that signs the claims the console accepts.
+  loadBalancerArn: ""
+  # The target group the pods are bound to.
+  targetGroupArn: ""
+  # The load balancer's session cookie for the console's host (the stack's consoleSessionCookie).
+  sessionCookie: ""
+  # Which user pool group grants which role (the stack's RoleGroups), e.g. {colvenna-admin: admin}.
+  roleGroups: {}
+  # The public subnets the load balancer sits in: the only sources the pods accept.
+  subnetCidrs: []
+
+# The CloudWatch Logs group the console writes its audit to.
+auditLogGroup: ""
+
+# The pipeline the console shows: the namespaces whose declarations it reads, with get and
+# list on them and nothing else (required), and the monitoring stack's Prometheus, whose
+# NetworkPolicy admits pods with prometheusReaderLabel in namespaces with it.
+pipeline:
+  namespaces: []
+  prometheusUrl: http://colvenna-monitoring-prometheus.colvenna-monitoring.svc:9090
+  prometheusReaderLabel: colvenna-lake.io/prometheus-reader
+
+# The controlled operations: the Secret (key "key", at least 32 bytes) that signs their
+# confirmations; install-console.sh makes it.
+operations:
+  confirmKeySecret: colvenna-console-confirm
+
+nodeSelector: {}
+tolerations: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

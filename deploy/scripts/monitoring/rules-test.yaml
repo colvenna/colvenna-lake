@@ -1,0 +1,377 @@
+# promtool test rules: Colvenna Lake's alerts fire at the latency targets and not below them, and say when a
+# measure is missing (check-rules.sh renders the chart's rules and runs this).
+rule_files: [rules.yaml]
+evaluation_interval: 30s
+tests:
+  - interval: 30s
+    input_series:
+      # A layer 6 minutes behind (past p99 5 min), another within 1 minute.
+      - series: 'colvenna_table_upstream_lag_seconds{namespace="colvenna-data",laketable="dwd",table="dwd.orders",upstream="ods.orders"}'
+        values: '360x40'
+      - series: 'colvenna_table_upstream_lag_seconds{namespace="colvenna-data",laketable="dws",table="dws.segments",upstream="dwd.orders"}'
+        values: '60x40'
+      # Each snapshot dwd carried took 3 minutes (past p95 2 min); dws's 30 s.
+      - series: 'colvenna_table_layer_latency_seconds{namespace="colvenna-data",laketable="dwd",table="dwd.orders",upstream="ods.orders"}'
+        values: '180x80'
+      - series: 'colvenna_table_layer_latency_seconds{namespace="colvenna-data",laketable="dws",table="dws.segments",upstream="dwd.orders"}'
+        values: '30x80'
+      # Three tables run; the third's lag is not measured.
+      - series: 'colvenna_table_phase{namespace="colvenna-data",laketable="dwd",table="dwd.orders",phase="Running"}'
+        values: '1x80'
+      - series: 'colvenna_table_phase{namespace="colvenna-data",laketable="dws",table="dws.segments",phase="Running"}'
+        values: '1x80'
+      - series: 'colvenna_table_phase{namespace="colvenna-data",laketable="ads",table="ads.daily",phase="Running"}'
+        values: '1x80'
+      # Rows quarantined, the newest flagged at minute 5 (300 s); none after.
+      - series: 'colvenna_table_quarantine_newest_timestamp_seconds{table="dwd.orders",rule="allowed(state)"}'
+        values: '_x10 300x70'
+      # A heartbeat 30 s from source to ODS, its freshness then stuck growing past 5.5 minutes.
+      - series: 'colvenna_source_latency_seconds{source="shop"}'
+        values: '30x40'
+      - series: 'colvenna_source_freshness_seconds{source="shop"}'
+        values: '30+30x40'
+      # The operator's pod stops answering at minute 5; colvenna-catalog's keeps answering.
+      - series: 'up{job="colvenna-operator",pod="op-1"}'
+        values: '1x10 0x30'
+      - series: 'up{job="colvenna-catalog",pod="cat-1"}'
+        values: '1x80'
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: ColvennaLayerLagP99
+        exp_alerts:
+          - exp_labels: {severity: critical, namespace: colvenna-data, laketable: dwd, table: dwd.orders, upstream: ods.orders}
+            exp_annotations:
+              summary: "dwd.orders has not carried ods.orders's changes for 6m 0s (target p99 300 s)"
+      - eval_time: 15m
+        alertname: ColvennaLayerLatencyP95
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, laketable: dwd, table: dwd.orders, upstream: ods.orders}
+            exp_annotations:
+              summary: "dwd.orders from ods.orders: p95 3m 0s over 30 min (target p95 120 s)"
+      - eval_time: 6m
+        alertname: ColvennaRowsQuarantined
+        exp_alerts:
+          - exp_labels: {severity: warning, table: dwd.orders, rule: allowed(state)}
+            exp_annotations:
+              summary: "dwd.orders: rows failed the check allowed(state); they are in its quarantine"
+      # Fifteen minutes on, nothing new was flagged.
+      - eval_time: 21m
+        alertname: ColvennaRowsQuarantined
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ColvennaSourceLatencyP99
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: ColvennaSourceStale
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ColvennaSourceStale
+        exp_alerts:
+          - exp_labels: {severity: critical, source: shop}
+            exp_annotations:
+              summary: "shop: the newest source change in the lake is 15m 30s old: changes are not arriving (target p99 300 s)"
+      - eval_time: 12m
+        alertname: ColvennaMetricsDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: colvenna-operator, pod: op-1}
+            exp_annotations:
+              summary: "colvenna-operator op-1 cannot be scraped: its measures, and the alerts on them, are missing"
+      - eval_time: 15m
+        alertname: ColvennaMetricsAbsent
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: ColvennaLayerUnmeasured
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, laketable: ads, table: ads.daily, phase: Running}
+            exp_annotations:
+              summary: "colvenna-data/ads runs, but its lag behind what it reads is not measured"
+
+  # The other breaches: each alert fires past its threshold and not below it.
+  - interval: 30s
+    input_series:
+      # Source to ODS: shop's heartbeats take 3 minutes (past p95), crm's one 6 minutes (past p99).
+      - series: 'colvenna_source_latency_seconds{namespace="colvenna-data",source="shop",type="mysql",table="ods.colvenna_heartbeat"}'
+        values: '180x80'
+      - series: 'colvenna_source_latency_seconds{namespace="colvenna-data",source="crm",type="postgres",table="ods_crm.colvenna_heartbeat"}'
+        values: '20x10 360 20x69'
+      # A table a query sees 31 minutes old, another 10.
+      - series: 'colvenna_table_freshness_seconds{namespace="colvenna-data",laketable="ads",table="ads.daily"}'
+        values: '1860x80'
+      - series: 'colvenna_table_freshness_seconds{namespace="colvenna-data",laketable="dws",table="dws.segments"}'
+        values: '600x80'
+      # A fenced commit at minute 5; conflicts every few seconds on dws.segments.
+      - series: 'colvenna_catalog_commits_total{table="dwd.orders",outcome="fenced"}'
+        values: '0x10 1x70'
+      - series: 'colvenna_catalog_commits_total{table="dws.segments",outcome="conflict"}'
+        values: '0+30x80'
+      # A source Degraded from minute 1; its job's last checkpoint 12 minutes before minute 20.
+      - series: 'colvenna_source_phase{namespace="colvenna-data",source="shop",type="mysql",phase="Degraded"}'
+        values: '0 0 1x78'
+      - series: 'colvenna_job_last_checkpoint_timestamp_seconds{namespace="colvenna-data",source="shop",deployment="shop-cdc"}'
+        values: '480x80'
+      # crm's heartbeat cannot be written from minute 2.
+      - series: 'colvenna_source_heartbeat_ok{namespace="colvenna-data",source="crm",type="postgres",table="ods_crm.colvenna_heartbeat"}'
+        values: '1x4 0x76'
+      # The operator measured shop until minute 2, dws throughout; a postgres source runs without
+      # a heartbeat seen.
+      - series: 'colvenna_source_measured_timestamp_seconds{namespace="colvenna-data",source="shop",type="mysql"}'
+        values: '0+30x4 120x76'
+      - series: 'colvenna_table_measured_timestamp_seconds{namespace="colvenna-data",laketable="dws",table="dws.segments"}'
+        values: '0+30x80'
+      - series: 'colvenna_source_phase{namespace="colvenna-data",source="billing",type="postgres",phase="Running"}'
+        values: '1x80'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: ColvennaSourceLatencyP95
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, source: shop, type: mysql, table: ods.colvenna_heartbeat}
+            exp_annotations:
+              summary: "shop: source to ODS p95 over 30 min is 3m 0s (target p95 120 s)"
+      - eval_time: 6m
+        alertname: ColvennaSourceLatencyP99
+        exp_alerts:
+          - exp_labels: {severity: critical, namespace: colvenna-data, source: crm, type: postgres, table: ods_crm.colvenna_heartbeat}
+            exp_annotations:
+              summary: "crm: a change took 6m 0s to reach ODS (target p99 300 s)"
+      - eval_time: 20m
+        alertname: ColvennaSourceLatencyP99
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: ColvennaFreshnessP99
+        exp_alerts:
+          - exp_labels: {severity: critical, namespace: colvenna-data, laketable: ads, table: ads.daily}
+            exp_annotations:
+              summary: "ads.daily: queries see source changes 31m 0s old (whole-path target p99 1800 s)"
+      - eval_time: 6m
+        alertname: ColvennaCommitFenced
+        exp_alerts:
+          - exp_labels: {severity: critical, table: dwd.orders, outcome: fenced}
+            exp_annotations:
+              summary: "dwd.orders: a snapshot no catalog commit made was found; the table is fenced"
+      - eval_time: 25m
+        alertname: ColvennaCommitConflicts
+        exp_alerts:
+          - exp_labels: {severity: warning, table: dws.segments}
+            exp_annotations:
+              summary: "dws.segments: 1.00 commit conflicts a second; two writers compete"
+      - eval_time: 7m
+        alertname: ColvennaDegraded
+        exp_alerts:
+          - exp_labels: {severity: critical, namespace: colvenna-data, source: shop, type: mysql, phase: Degraded}
+            exp_annotations:
+              summary: "colvenna-data/shop is Degraded: its status and Warning events say why"
+      - eval_time: 25m
+        alertname: ColvennaNoCheckpoint
+        exp_alerts:
+          - exp_labels: {severity: critical, namespace: colvenna-data, source: shop, deployment: shop-cdc}
+            exp_annotations:
+              summary: "shop-cdc: no checkpoint, and so no commit, for 17m 0s"
+      - eval_time: 10m
+        alertname: ColvennaHeartbeatFailing
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, source: crm, type: postgres, table: ods_crm.colvenna_heartbeat}
+            exp_annotations:
+              summary: "crm: the heartbeat cannot be written to ods_crm.colvenna_heartbeat; source to ODS is not measured"
+      - eval_time: 15m
+        alertname: ColvennaMeasuresStale
+        exp_alerts:
+          - exp_labels: {severity: critical, namespace: colvenna-data, source: shop, type: mysql}
+            exp_annotations:
+              summary: "colvenna-data/shop has not been measured for 13m 0s: its latency, lag and freshness are stale"
+      - eval_time: 20m
+        alertname: ColvennaSourceUnmeasured
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, source: billing, type: postgres, phase: Running}
+            exp_annotations:
+              summary: "colvenna-data/billing runs without a heartbeat seen in ODS: source to ODS is not measured"
+
+  # Correctness and operations alerts, over an hour and more (1-minute samples).
+  - interval: 1m
+    input_series:
+      - series: 'colvenna_table_quarantined_rows{namespace="colvenna-data",laketable="dwd",table="dwd.orders",rule="allowed(state)"}'
+        values: '20000x90'
+      - series: 'colvenna_source_events_rejected{namespace="colvenna-data",source="clicks",reason="TOO_OLD"}'
+        values: '0x5 5x85'
+      - series: 'colvenna_erasure_breaches{namespace="colvenna-data",lakeerasure="erase-1"}'
+        values: '1x90'
+      - series: 'colvenna_job_checkpoints_failed{namespace="colvenna-data",source="shop",deployment="shop-cdc"}'
+        values: '0x5 2x85'
+      - series: 'colvenna_table_level0_files{namespace="colvenna-data",source="shop",table="ods.orders"}'
+        values: '80x90'
+      - series: 'colvenna_table_small_files{namespace="colvenna-data",source="shop",table="ods.orders"}'
+        values: '2000x90'
+      - series: 'colvenna_table_snapshots{namespace="colvenna-data",source="shop",table="ods.orders"}'
+        values: '6000x90'
+      - series: 'colvenna_task_phase{namespace="colvenna-data",laketask="compact-1",type="compact",table="ods.orders",phase="Failed"}'
+        values: '1x90'
+      # colvenna-catalog: 10 errors a minute; every commit between 0.5 and 5 s.
+      - series: 'colvenna_catalog_requests_total{action="COMMIT",status="503"}'
+        values: '0+10x90'
+      - series: 'colvenna_catalog_request_seconds_bucket{action="COMMIT",le="0.5"}'
+        values: '0x90'
+      - series: 'colvenna_catalog_request_seconds_bucket{action="COMMIT",le="5"}'
+        values: '0+60x90'
+      - series: 'colvenna_catalog_request_seconds_bucket{action="COMMIT",le="+Inf"}'
+        values: '0+60x90'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: ColvennaQuarantineFull
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, laketable: dwd, table: dwd.orders, rule: allowed(state)}
+            exp_annotations:
+              summary: "dwd.orders holds 20000 quarantined rows (allowed(state)): the source or the check needs a fix"
+      - eval_time: 10m
+        alertname: ColvennaEventsRejected
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, source: clicks, reason: TOO_OLD}
+            exp_annotations:
+              summary: "clicks: events rejected (TOO_OLD); they are in the rejections table"
+      - eval_time: 1m
+        alertname: ColvennaErasureOverdue
+        exp_alerts:
+          - exp_labels: {severity: critical, namespace: colvenna-data, lakeerasure: erase-1}
+            exp_annotations:
+              summary: "erase-1: an erasure deadline passed; its status lists what is left"
+      - eval_time: 10m
+        alertname: ColvennaCheckpointsFailing
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, source: shop, deployment: shop-cdc}
+            exp_annotations:
+              summary: "shop-cdc: checkpoints failed in the last 15 min"
+      - eval_time: 35m
+        alertname: ColvennaCompactionBacklog
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, source: shop, table: ods.orders}
+            exp_annotations:
+              summary: "ods.orders: 80 level-0 files no compaction merged"
+      - eval_time: 65m
+        alertname: ColvennaSmallFiles
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, source: shop, table: ods.orders}
+            exp_annotations:
+              summary: "ods.orders: 2000 small files; a compaction task merges them"
+      - eval_time: 65m
+        alertname: ColvennaSnapshotsPiling
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, source: shop, table: ods.orders}
+            exp_annotations:
+              summary: "ods.orders keeps 6000 snapshots; nothing expires them"
+      - eval_time: 1m
+        alertname: ColvennaTaskFailed
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, laketask: compact-1, type: compact, table: ods.orders, phase: Failed}
+            exp_annotations:
+              summary: "compact-1 (compact on ods.orders) failed"
+      - eval_time: 20m
+        alertname: ColvennaCatalogErrors
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "colvenna-catalog answers 0.17 errors a second"
+      - eval_time: 20m
+        alertname: ColvennaCatalogCommitSlow
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "colvenna-catalog's commit p99 is 4.955s"
+
+  # Dashboards: a copy whose refreshes stopped, and a dashboard Degraded.
+  - interval: 1m
+    input_series:
+      - series: 'colvenna_dashboard_refreshed_timestamp_seconds{namespace="colvenna-data",lakedashboard="sales",query="totals",serve="materialized"}'
+        values: '0+60x5 300x20'
+      - series: 'colvenna_dashboard_phase{namespace="colvenna-data",lakedashboard="sales",phase="Degraded"}'
+        values: '0x2 1x20'
+      - series: 'colvenna_dashboard_phase{namespace="colvenna-data",lakedashboard="ops",phase="Ready"}'
+        values: '1x20'
+      - series: 'colvenna_dashboard_measured_timestamp_seconds{namespace="colvenna-data",lakedashboard="ops"}'
+        values: '0+60x3 180x17'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ColvennaDashboardStale
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: ColvennaDashboardStale
+        exp_alerts:
+          - exp_labels: {severity: critical, namespace: colvenna-data, lakedashboard: sales, query: totals, serve: materialized}
+            exp_annotations:
+              summary: "colvenna-data/sales totals holds the lake as of 11m 0s ago (target p99 600 s)"
+      - eval_time: 8m
+        alertname: ColvennaDashboardDegraded
+        exp_alerts:
+          - exp_labels: {severity: critical, namespace: colvenna-data, lakedashboard: sales, phase: Degraded}
+            exp_annotations:
+              summary: "colvenna-data/sales is Degraded: its status and Warning events say why"
+      - eval_time: 15m
+        alertname: ColvennaDashboardUnmeasured
+        exp_alerts:
+          - exp_labels: {severity: critical, namespace: colvenna-data, lakedashboard: ops, phase: Ready}
+            exp_annotations:
+              summary: "colvenna-data/ops has not been looked at for 5 minutes: its copies' age is stale"
+
+  # Quality: a publishing gate closed past 5 minutes, one that only records, and a stale one.
+  - interval: 1m
+    input_series:
+      - series: 'colvenna_quality_gate_open{namespace="colvenna-data",lakequality="clicks",table="ods_web.clicks",cause="Failed",publish="true"}'
+        values: '0x20'
+      - series: 'colvenna_quality_gate_open{namespace="colvenna-data",lakequality="orders",table="dwd.orders",cause="Failed",publish="false"}'
+        values: '0x20'
+      - series: 'colvenna_quality_measured_timestamp_seconds{namespace="colvenna-data",lakequality="clicks",table="ods_web.clicks"}'
+        values: '0+60x5 300x15'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: ColvennaQualityGateClosed
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: ColvennaQualityGateClosed
+        exp_alerts:
+          - exp_labels: {severity: critical, namespace: colvenna-data, lakequality: clicks, table: ods_web.clicks, cause: Failed, publish: "true"}
+            exp_annotations:
+              summary: "ods_web.clicks is held back from publication: its quality gate colvenna-data/clicks is closed (Failed)"
+      - eval_time: 14m
+        alertname: ColvennaQualityUnmeasured
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: ColvennaQualityUnmeasured
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data, lakequality: clicks, table: ods_web.clicks}
+            exp_annotations:
+              summary: "colvenna-data/clicks has not been judged for 10 minutes: its gate is stale"
+
+  # Lineage: reports stop succeeding at 5 minutes; failures go on from then.
+  - interval: 1m
+    input_series:
+      - series: 'colvenna_lineage_last_success_timestamp_seconds{namespace="colvenna-data"}'
+        values: '0+60x5 300x20'
+      - series: 'colvenna_lineage_failures{namespace="colvenna-data"}'
+        values: '0x5 1+1x20'
+      - series: 'colvenna_lineage_events_rejected{namespace="colvenna-data"}'
+        values: '0x10 1x15'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: ColvennaLineageStale
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: ColvennaLineageStale
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data}
+            exp_annotations:
+              summary: "colvenna-data's lineage has not been reported for 10 minutes: the catalog shows an older graph"
+      - eval_time: 12m
+        alertname: ColvennaLineageFailing
+        exp_alerts: []
+      - eval_time: 18m
+        alertname: ColvennaLineageFailing
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data}
+            exp_annotations:
+              summary: "colvenna-data's lineage reports keep failing: the operator's log says why"
+      - eval_time: 9m
+        alertname: ColvennaLineageRejected
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: ColvennaLineageRejected
+        exp_alerts:
+          - exp_labels: {severity: warning, namespace: colvenna-data}
+            exp_annotations:
+              summary: "the lineage catalog refused events of colvenna-data: it shows less than the operator reported; the operator's log says which"

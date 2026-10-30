@@ -1,0 +1,11 @@
+{{define "result"}}{{template "head" .}}
+<p><a href="/operations">← 受控操作</a> · <a href="/pipeline">流水线</a></p>
+<h1>{{.Op.Title}}：{{if .Error}}没有完成{{else}}已提交{{end}}</h1>
+<section>
+  <dl>
+    <dt>对象</dt><dd>{{.Resource}}</dd>
+    {{if .Error}}<dt>原因</dt><dd>{{.Error}}</dd>{{else}}<dt>结果</dt><dd>{{range $i, $d := .Done}}{{if $i}}；{{end}}{{$d}}{{end}}</dd>{{end}}
+  </dl>
+  <p class="note">Operator 接着判定与执行；它的结论在资源的状态里，见流水线的节点页。</p>
+</section>
+{{template "foot" .}}{{end}}

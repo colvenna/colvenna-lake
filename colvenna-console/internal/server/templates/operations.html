@@ -1,0 +1,25 @@
+{{define "operations"}}{{template "head" .}}
+<p><a href="/">← 首页</a></p>
+<h1>受控操作</h1>
+<p class="note">与 colvenna CLI 的同名命令做同样的事：以你的身份经 Kubernetes API 生效，由 Operator 照常判定，每一次都写进审计。删除、回刷与合规删除先列出影响范围，确认之后才执行。</p>
+{{$namespaces := .Namespaces}}
+{{range .Ops}}
+<section class="operation">
+  <h2>{{.Title}}{{if .Admin}} · 平台管理员{{end}}{{if .Confirm}} · 需要确认{{end}}</h2>
+  <form method="post" action="/operations/{{.Name}}">
+    <label>命名空间 <select name="namespace">{{range $namespaces}}<option>{{.}}</option>{{end}}</select></label>
+    {{range .Fields}}
+    <label>{{.Label}}{{if .Required}} *{{end}}
+      {{if eq .Type "manifest"}}<textarea name="{{.Name}}" rows="12" spellcheck="false"></textarea>
+      {{else if eq .Type "lines"}}<textarea name="{{.Name}}" rows="3" spellcheck="false"{{if .Private}} autocomplete="off"{{end}}></textarea>
+      {{else if eq .Type "choice"}}<select name="{{.Name}}">{{range .Choices}}<option>{{.}}</option>{{end}}</select>
+      {{else if eq .Type "check"}}<input type="checkbox" name="{{.Name}}">
+      {{else}}<input type="{{if eq .Type "number"}}number{{else}}text{{end}}" name="{{.Name}}">{{end}}
+    </label>
+    {{with .Help}}<p class="note">{{.}}</p>{{end}}
+    {{end}}
+    <button type="submit">{{if .Confirm}}查看影响范围{{else}}执行{{end}}</button>
+  </form>
+</section>
+{{end}}
+{{template "foot" .}}{{end}}

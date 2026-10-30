@@ -1,0 +1,43 @@
+# Required, by digest: prom/prometheus v3.5.0 and grafana/grafana 12.2.0 (multi-arch indexes), the
+# environment's own copies, which install-monitoring.sh gives (deploy/images/third-party.tsv).
+images:
+  prometheus: ""
+  grafana: ""
+
+# What is scraped: each pod of these, found through its Service's endpoints.
+targets:
+  operator: {namespace: colvenna-system, service: colvenna-operator-metrics, port: metrics}
+  catalog: {namespace: colvenna-catalog, service: colvenna-catalog, port: metrics}
+
+prometheus:
+  # Pods with this label, in namespaces with it, may query Prometheus (the console's pipeline).
+  readerLabel: colvenna-lake.io/prometheus-reader
+  retention: 15d
+  storage: 10Gi
+  storageClassName: colvenna-gp3
+  scrapeInterval: 30s
+  resources: {requests: {cpu: 100m, memory: 512Mi}, limits: {memory: 1Gi}}
+
+grafana:
+  # A Secret with key admin-password; the installer makes it. There is no anonymous access.
+  adminSecret: colvenna-grafana-admin
+  resources: {requests: {cpu: 50m, memory: 256Mi}, limits: {memory: 512Mi}}
+
+# How often the operator writes a source's heartbeat (its reconcile round), in seconds.
+heartbeatSeconds: 30
+
+# Quarantined rows a table may hold for half an hour before an alert asks for a fix.
+quarantineRows: 10000
+
+# The acceptance contract's latency targets (docs/design/acceptance-contract.md 2.1), in seconds:
+# each path's p95 and p99, and the whole path's. The alerts and panels compare with these.
+latency:
+  layerP95: 120
+  layerP99: 300
+  sourceToDashboardP95: 900
+  sourceToDashboardP99: 1800
+  # Paimon to a dashboard's materialized view or internal table, and a fixed dashboard query.
+  dorisCopyP95: 300
+  dorisCopyP99: 600
+  dashboardQueryP95: 3
+  dashboardQueryP99: 10

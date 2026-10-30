@@ -1,0 +1,9 @@
+apiVersion: v2
+name: colvenna-dev-kafka
+description: >-
+  Optional test Kafka of the Colvenna Lake development profile, for development and testing only: one
+  KRaft node through an existing Strimzi operator, a TLS and SCRAM-SHA-512 listener inside the
+  cluster, declared topics and users. Production Kafka is not installed by the platform.
+type: application
+version: 0.1.0
+appVersion: "4.3.1"

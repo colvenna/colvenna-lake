@@ -1,0 +1,7 @@
+# The public IPv4 literals redaction.py allows (#300), each with its reason:
+# <path glob> TAB <address> TAB <reason>. Anything else that reads as a public address is refused:
+# documents write a placeholder (<运维出口地址>) and tests an address of the documentation ranges
+# (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24, RFC 5737). Only what is not an address goes here.
+docs/history/m1/doris-paimon-reader-upgrade.md	4.1.4.1	Apache Doris 的版本号 4.1.4.1，不是地址
+docs/history/m1/doris-paimon-reader-upgrade.md	3.0.6.2	Apache Doris 的版本号 3.0.6.2，不是地址
+docs/history/m1/doris-paimon.md	4.1.4.1	Apache Doris 的版本号 4.1.4.1，不是地址

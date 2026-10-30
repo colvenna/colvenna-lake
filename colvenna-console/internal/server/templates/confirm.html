@@ -1,0 +1,16 @@
+{{define "confirm"}}{{template "head" .}}
+<h1>确认：{{.Op.Title}}</h1>
+<section class="problems">
+  <h2>影响范围</h2>
+  <p>{{.Resource}}</p>
+  <ul>{{range .Impact}}<li>{{.}}</li>{{end}}</ul>
+  <p class="note">确认之后立即执行；这份确认 5 分钟内、只对这一次的内容有效。取消则什么也不改。</p>
+</section>
+<form method="post" action="/operations/{{.Op.Name}}">
+  <input type="hidden" name="namespace" value="{{.Namespace}}">
+  {{range .Fields}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">{{end}}
+  <input type="hidden" name="confirmation" value="{{.Token}}">
+  <button type="submit">确认执行</button>
+  <a href="/operations">取消</a>
+</form>
+{{template "foot" .}}{{end}}

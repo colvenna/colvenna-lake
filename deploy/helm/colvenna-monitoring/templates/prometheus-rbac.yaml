@@ -1,0 +1,39 @@
+# Prometheus's identity, which may discover the pods of what it scrapes, in their namespaces only.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-prometheus
+  labels:
+    {{- include "colvenna-monitoring.labels" . | nindent 4 }}
+automountServiceAccountToken: true
+{{- range $name, $t := .Values.targets }}
+---
+# Discovery of the {{ $name }}'s pods behind its Service, in its namespace only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $.Release.Name }}-prometheus
+  namespace: {{ $t.namespace }}
+  labels:
+    {{- include "colvenna-monitoring.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [services, endpoints, pods]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $.Release.Name }}-prometheus
+  namespace: {{ $t.namespace }}
+  labels:
+    {{- include "colvenna-monitoring.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $.Release.Name }}-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: {{ $.Release.Name }}-prometheus
+    namespace: {{ $.Release.Namespace }}
+{{- end }}

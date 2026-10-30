@@ -1,0 +1,32 @@
+{{- if .Values.doris.host }}
+# The operator reads root's password of the platform's Doris, that one Secret and nothing else
+# there (LLD "看板服务": 管理账号边界).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-doris-admin
+  namespace: {{ .Values.doris.namespace }}
+  labels:
+    {{- include "colvenna-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [{{ .Values.doris.adminSecret | quote }}]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-doris-admin
+  namespace: {{ .Values.doris.namespace }}
+  labels:
+    {{- include "colvenna-operator.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ .Release.Name }}-doris-admin
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

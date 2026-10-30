@@ -1,0 +1,463 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Colvenna Lake 实时湖仓总体架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/design/diagrams/colvenna-lake-architecture.html"
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "浏览器用户",
+      "sublabel": "BI 用户 · 运维",
+      "pos": [
+        720,
+        20
+      ],
+      "size": [
+        200,
+        56
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "external",
+      "label": "colvenna CLI / 编排器",
+      "sublabel": "Airflow 等 · K8s API",
+      "pos": [
+        30,
+        316
+      ],
+      "size": [
+        160,
+        66
+      ]
+    },
+    {
+      "id": "src_db",
+      "type": "external",
+      "label": "业务数据库",
+      "sublabel": "MySQL · PostgreSQL · MongoDB",
+      "pos": [
+        30,
+        456
+      ],
+      "size": [
+        160,
+        66
+      ]
+    },
+    {
+      "id": "src_events",
+      "type": "external",
+      "label": "日志 / 埋点采集",
+      "sublabel": "SDK · Agent",
+      "pos": [
+        30,
+        620
+      ],
+      "size": [
+        160,
+        62
+      ]
+    },
+    {
+      "id": "console",
+      "type": "frontend",
+      "label": "管理控制台",
+      "sublabel": "流水线全景 · 受控操作",
+      "pos": [
+        410,
+        166
+      ],
+      "size": [
+        180,
+        66
+      ],
+      "tag": "Web"
+    },
+    {
+      "id": "alb",
+      "type": "security",
+      "label": "公网 ALB + Cognito",
+      "sublabel": "TLS · 口令 + TOTP · 按组映射角色",
+      "pos": [
+        720,
+        166
+      ],
+      "size": [
+        200,
+        66
+      ],
+      "tag": "入口"
+    },
+    {
+      "id": "bi",
+      "type": "frontend",
+      "label": "BI 查询界面",
+      "sublabel": "Superset · 每人一个 Doris 用户",
+      "pos": [
+        1060,
+        166
+      ],
+      "size": [
+        190,
+        66
+      ],
+      "tag": "Web"
+    },
+    {
+      "id": "operator",
+      "type": "backend",
+      "label": "colvenna-operator",
+      "sublabel": "声明 → FlinkDeployment · Job",
+      "pos": [
+        410,
+        316
+      ],
+      "size": [
+        180,
+        66
+      ],
+      "tag": "控制"
+    },
+    {
+      "id": "catalog",
+      "type": "security",
+      "label": "colvenna-catalog",
+      "sublabel": "Paimon REST · PostgreSQL",
+      "pos": [
+        720,
+        316
+      ],
+      "size": [
+        200,
+        66
+      ],
+      "tag": "控制平面"
+    },
+    {
+      "id": "flink",
+      "type": "backend",
+      "label": "接入作业 (Flink)",
+      "sublabel": "CDC action · Kafka 事件流",
+      "pos": [
+        410,
+        456
+      ],
+      "size": [
+        180,
+        66
+      ],
+      "tag": "写入"
+    },
+    {
+      "id": "paimon_s3",
+      "type": "cloud",
+      "label": "Amazon S3 · Paimon 表",
+      "sublabel": "ODS / DWD / DWS 表",
+      "pos": [
+        720,
+        446
+      ],
+      "size": [
+        200,
+        90
+      ],
+      "tag": "存储"
+    },
+    {
+      "id": "doris",
+      "type": "backend",
+      "label": "查询引擎（基于 Apache Doris 4.1.4）",
+      "sublabel": "Apache Doris Operator · 存算一体",
+      "pos": [
+        1010,
+        466
+      ],
+      "size": [
+        230,
+        66
+      ],
+      "tag": "查询"
+    },
+    {
+      "id": "kafka",
+      "type": "messagebus",
+      "label": "Kafka",
+      "sublabel": "MSK 或自建",
+      "pos": [
+        240,
+        620
+      ],
+      "size": [
+        130,
+        62
+      ]
+    },
+    {
+      "id": "layered",
+      "type": "backend",
+      "label": "分层加工作业 (Flink)",
+      "sublabel": "LakeTable · ODS → DWD → DWS",
+      "pos": [
+        410,
+        616
+      ],
+      "size": [
+        180,
+        66
+      ],
+      "tag": "写入"
+    },
+    {
+      "id": "iceberg_rest",
+      "type": "backend",
+      "label": "Iceberg REST Catalog",
+      "sublabel": "Polaris · 可选",
+      "pos": [
+        1010,
+        640
+      ],
+      "size": [
+        230,
+        66
+      ],
+      "tag": "开放"
+    },
+    {
+      "id": "consumers",
+      "type": "external",
+      "label": "外部 Iceberg 读端",
+      "sublabel": "Spark · Trino",
+      "pos": [
+        1300,
+        640
+      ],
+      "size": [
+        150,
+        66
+      ]
+    },
+    {
+      "id": "maint",
+      "type": "backend",
+      "label": "批任务 LakeTask (Flink)",
+      "sublabel": "K8s Job · 压缩 · 过期 · 回刷",
+      "pos": [
+        410,
+        766
+      ],
+      "size": [
+        180,
+        66
+      ],
+      "tag": "运维"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "AWS 区域（目前只在 AWS 上验证）",
+      "wraps": [
+        "console",
+        "alb",
+        "bi",
+        "operator",
+        "catalog",
+        "flink",
+        "paimon_s3",
+        "doris",
+        "kafka",
+        "layered",
+        "iceberg_rest",
+        "maint"
+      ],
+      "pad": 34
+    },
+    {
+      "kind": "security-group",
+      "label": "Web 入口与界面",
+      "wraps": [
+        "console",
+        "alb",
+        "bi"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "security-group",
+      "label": "EKS · 写入与维护",
+      "wraps": [
+        "operator",
+        "flink",
+        "layered",
+        "maint"
+      ],
+      "pad": 14
+    },
+    {
+      "kind": "security-group",
+      "label": "EKS · 查询与开放",
+      "wraps": [
+        "doris",
+        "iceberg_rest"
+      ],
+      "pad": 14
+    }
+  ],
+  "connections": [
+    {
+      "from": "user",
+      "to": "alb",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "from": "alb",
+      "to": "console",
+      "label": "登录后转发"
+    },
+    {
+      "from": "alb",
+      "to": "bi",
+      "label": "登录后转发"
+    },
+    {
+      "from": "console",
+      "to": "operator",
+      "label": "提交声明 · 读状态",
+      "variant": "dashed"
+    },
+    {
+      "from": "cli",
+      "to": "operator",
+      "label": "提交声明 · 触发 LakeTask",
+      "variant": "dashed"
+    },
+    {
+      "from": "operator",
+      "to": "catalog",
+      "label": "身份 · 授权",
+      "variant": "security"
+    },
+    {
+      "from": "src_db",
+      "to": "flink",
+      "label": "直读 binlog / WAL / oplog",
+      "variant": "emphasis"
+    },
+    {
+      "from": "src_events",
+      "to": "kafka"
+    },
+    {
+      "from": "kafka",
+      "to": "flink",
+      "label": "消费事件"
+    },
+    {
+      "from": "flink",
+      "to": "paimon_s3",
+      "label": "checkpoint 提交",
+      "variant": "emphasis"
+    },
+    {
+      "from": "flink",
+      "to": "catalog",
+      "label": "元数据 · 提交 · 临时凭证",
+      "variant": "security"
+    },
+    {
+      "from": "layered",
+      "to": "paimon_s3",
+      "label": "consumer-id 流读 · 写回"
+    },
+    {
+      "from": "maint",
+      "to": "paimon_s3",
+      "label": "压缩 · 过期 · 回刷",
+      "variant": "dashed"
+    },
+    {
+      "from": "bi",
+      "to": "doris",
+      "label": "以本人身份查询"
+    },
+    {
+      "from": "doris",
+      "to": "paimon_s3",
+      "label": "直读"
+    },
+    {
+      "from": "doris",
+      "to": "catalog",
+      "label": "加载表 · 凭证",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "from": "paimon_s3",
+      "to": "iceberg_rest",
+      "label": "Iceberg 元数据",
+      "variant": "dashed"
+    },
+    {
+      "from": "consumers",
+      "to": "iceberg_rest",
+      "label": "只读",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "两类接入",
+      "items": [
+        "CDC：Operator 为每个 LakeSource 生成 Paimon CDC action 作业（MySQL、PostgreSQL、MongoDB；MySQL 也可改读用户 Kafka 上的 Debezium JSON），写 Paimon 主键表：deduplicate + sequence.field（版本列），fixed bucket；直连 binlog / WAL 用 changelog-producer = input",
+        "事件流：Kafka → Flink DataStream 作业 → append 表（bucket = -1），按事件时间的 dt（可选 dt / hr）分区，空闲分区写 _SUCCESS",
+        "分层作业是 LakeTable 的常驻 Flink 流作业，带 consumer-id 流读上游 Paimon 表，层间不依赖 Kafka"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "受管维护",
+      "items": [
+        "compaction、快照过期、孤儿文件清理、tag、回刷与质量校验都是一次性的 LakeTask：Kubernetes Job 上的 Flink 批作业，按表排队",
+        "由用户的编排器、colvenna CLI 或管理控制台触发；平台不内置调度",
+        "直读 binlog / WAL 的 CDC 与事件流写入作业 write-only；分层表、MongoDB 与经 Kafka 的 CDC 等 lookup changelog 的表由写入端自己压缩"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "colvenna-catalog 控制平面",
+      "items": [
+        "自建的 Paimon 2.0.0 REST catalog 服务端，PostgreSQL 后端",
+        "快照在服务端原子提交，取代 S3 rename 与 JDBC 锁",
+        "每个声明一个服务身份与库表授权，按表签发限定表前缀的临时 S3 凭证，服务端审计；Doris 加载表与凭证同样经由 catalog"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "查询与开放",
+      "items": [
+        "平台的查询引擎基于 Apache Doris 4.1.4 修改构建，以存算一体部署，配套自建的 Paimon 2.0.0 读取器；看板由 LakeDashboard 声明，Operator 建 catalog 时设 ttl-second=0",
+        "Trino 不在默认栈：用户已有的 Trino 以 Iceberg 连接器读开放层，原生 Paimon 连接器不支持",
+        "写 Iceberg 元数据的表由 Operator 核对后登记到 Polaris；已验收 Spark 与 Trino，Glue 与 Athena 未验证"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Web 入口与界面",
+      "items": [
+        "公网 ALB 终结 TLS，经 Amazon Cognito 登录（口令 + TOTP），Cognito 组映射角色",
+        "BI 查询界面用 Superset，每人以自己的 Doris 用户查询，脱敏与行过滤照常生效",
+        "管理控制台读 Kubernetes API 与 Prometheus；操作以扮演用户提交，删除、回刷、过期、孤儿清理与合规删除先确认，控制台与集群都留审计；Flink UI、Prometheus、Grafana、Marquez 不经入口暴露"
+      ]
+    }
+  ]
+}

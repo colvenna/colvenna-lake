@@ -1,0 +1,233 @@
+# Colvenna Lake's alerts (LLD "监控与数据质量"). The latency ones measure the acceptance contract's
+# paths (2.1) with its targets: source to ODS from the heartbeat, one layer to the next from the
+# reader's consumer, and the whole path as the freshness a query sees. Kubernetes Warning events
+# carry the per-object detail.
+groups:
+  - name: colvenna-lake-latency
+    rules:
+      - alert: ColvennaSourceLatencyP95
+        expr: quantile_over_time(0.95, colvenna_source_latency_seconds[30m]) > {{ .Values.latency.layerP95 }}
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.source {{"}}"}}: source to ODS p95 over 30 min is {{"{{"}} $value | humanizeDuration {{"}}"}} (target p95 {{ .Values.latency.layerP95 }} s)"
+      - alert: ColvennaSourceLatencyP99
+        expr: max_over_time(colvenna_source_latency_seconds[10m]) > {{ .Values.latency.layerP99 }}
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.source {{"}}"}}: a change took {{"{{"}} $value | humanizeDuration {{"}}"}} to reach ODS (target p99 {{ .Values.latency.layerP99 }} s)"
+      # The heartbeat's latency is measured when a beat arrives; while none does, its freshness
+      # grows. Past p99 and one heartbeat round, a change has taken longer than the targets allow.
+      - alert: ColvennaSourceStale
+        expr: colvenna_source_freshness_seconds > {{ .Values.latency.layerP99 }} + {{ .Values.heartbeatSeconds }}
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.source {{"}}"}}: the newest source change in the lake is {{"{{"}} $value | humanizeDuration {{"}}"}} old: changes are not arriving (target p99 {{ .Values.latency.layerP99 }} s)"
+      # p95 of what each carried snapshot took, from its upstream commit to the table's.
+      - alert: ColvennaLayerLatencyP95
+        expr: quantile_over_time(0.95, colvenna_table_layer_latency_seconds[30m]) > {{ .Values.latency.layerP95 }}
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.table {{"}}"}} from {{"{{"}} $labels.upstream {{"}}"}}: p95 {{"{{"}} $value | humanizeDuration {{"}}"}} over 30 min (target p95 {{ .Values.latency.layerP95 }} s)"
+      # An upstream snapshot not carried for longer than p99 has already missed it.
+      - alert: ColvennaLayerLagP99
+        expr: colvenna_table_upstream_lag_seconds > {{ .Values.latency.layerP99 }}
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.table {{"}}"}} has not carried {{"{{"}} $labels.upstream {{"}}"}}'s changes for {{"{{"}} $value | humanizeDuration {{"}}"}} (target p99 {{ .Values.latency.layerP99 }} s)"
+      - alert: ColvennaFreshnessP99
+        expr: colvenna_table_freshness_seconds > {{ .Values.latency.sourceToDashboardP99 }}
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.table {{"}}"}}: queries see source changes {{"{{"}} $value | humanizeDuration {{"}}"}} old (whole-path target p99 {{ .Values.latency.sourceToDashboardP99 }} s)"
+  - name: colvenna-lake-dashboards
+    rules:
+      # A copy (materialized view, internal table) holds the lake as of its latest refresh that
+      # succeeded: older than the p99 target from Paimon to the dashboard, a commit since has missed it.
+      - alert: ColvennaDashboardStale
+        expr: time() - colvenna_dashboard_refreshed_timestamp_seconds > {{ .Values.latency.dorisCopyP99 }}
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.namespace {{"}}"}}/{{"{{"}} $labels.lakedashboard {{"}}"}} {{"{{"}} $labels.query {{"}}"}} holds the lake as of {{"{{"}} $value | humanizeDuration {{"}}"}} ago (target p99 {{ .Values.latency.dorisCopyP99 }} s)"
+      - alert: ColvennaDashboardDegraded
+        expr: colvenna_dashboard_phase{phase=~"Degraded|Failed"} == 1
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.namespace {{"}}"}}/{{"{{"}} $labels.lakedashboard {{"}}"}} is {{"{{"}} $labels.phase {{"}}"}}: its status and Warning events say why"
+      - alert: ColvennaDashboardUnmeasured
+        expr: colvenna_dashboard_phase{phase="Ready"} == 1 and on (namespace, lakedashboard) time() - colvenna_dashboard_measured_timestamp_seconds > 300
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.namespace {{"}}"}}/{{"{{"}} $labels.lakedashboard {{"}}"}} has not been looked at for 5 minutes: its copies' age is stale"
+  # Batch quality (LakeQuality): a gate holding back publication, and a gate nobody judges.
+  - name: colvenna-lake-quality
+    rules:
+      - alert: ColvennaQualityGateClosed
+        expr: colvenna_quality_gate_open{publish="true"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.table {{"}}"}} is held back from publication: its quality gate {{"{{"}} $labels.namespace {{"}}"}}/{{"{{"}} $labels.lakequality {{"}}"}} is closed ({{"{{"}} $labels.cause {{"}}"}})"
+      - alert: ColvennaQualityUnmeasured
+        expr: time() - colvenna_quality_measured_timestamp_seconds > 600
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.namespace {{"}}"}}/{{"{{"}} $labels.lakequality {{"}}"}} has not been judged for 10 minutes: its gate is stale"
+  - name: colvenna-lake-lineage
+    rules:
+      # The lineage catalog shows what the operator last reported in full (LLD "血缘").
+      - alert: ColvennaLineageStale
+        expr: time() - colvenna_lineage_last_success_timestamp_seconds > 600
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.namespace {{"}}"}}'s lineage has not been reported for 10 minutes: the catalog shows an older graph"
+      - alert: ColvennaLineageFailing
+        expr: increase(colvenna_lineage_failures[10m]) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.namespace {{"}}"}}'s lineage reports keep failing: the operator's log says why"
+      # Refused for good (the catalog found the event wrong): it shows less than was reported.
+      - alert: ColvennaLineageRejected
+        expr: increase(colvenna_lineage_events_rejected[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "the lineage catalog refused events of {{"{{"}} $labels.namespace {{"}}"}}: it shows less than the operator reported; the operator's log says which"
+  - name: colvenna-lake-correctness
+    rules:
+      # A row flagged in the last 15 minutes, however many others left the quarantine meanwhile.
+      - alert: ColvennaRowsQuarantined
+        expr: time() - colvenna_table_quarantine_newest_timestamp_seconds < 900
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.table {{"}}"}}: rows failed the check {{"{{"}} $labels.rule {{"}}"}}; they are in its quarantine"
+      - alert: ColvennaQuarantineFull
+        expr: colvenna_table_quarantined_rows > {{ .Values.quarantineRows }}
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.table {{"}}"}} holds {{"{{"}} $value {{"}}"}} quarantined rows ({{"{{"}} $labels.rule {{"}}"}}): the source or the check needs a fix"
+      - alert: ColvennaEventsRejected
+        expr: increase(colvenna_source_events_rejected[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.source {{"}}"}}: events rejected ({{"{{"}} $labels.reason {{"}}"}}); they are in the rejections table"
+      - alert: ColvennaDegraded
+        expr: colvenna_source_phase{phase=~"Degraded|Failed"} == 1 or colvenna_table_phase{phase=~"Degraded|Failed"} == 1
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.namespace {{"}}"}}/{{"{{"}} $labels.source {{"}}"}}{{"{{"}} $labels.laketable {{"}}"}} is {{"{{"}} $labels.phase {{"}}"}}: its status and Warning events say why"
+      - alert: ColvennaCommitFenced
+        expr: increase(colvenna_catalog_commits_total{outcome="fenced"}[15m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.table {{"}}"}}: a snapshot no catalog commit made was found; the table is fenced"
+      - alert: ColvennaErasureOverdue
+        expr: colvenna_erasure_breaches > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.lakeerasure {{"}}"}}: an erasure deadline passed; its status lists what is left"
+  # What is not measured raises no latency alert: each of these says a measure is missing.
+  - name: colvenna-lake-coverage
+    rules:
+      - alert: ColvennaMetricsDown
+        expr: up{job=~"colvenna-.*"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.job {{"}}"}} {{"{{"}} $labels.pod {{"}}"}} cannot be scraped: its measures, and the alerts on them, are missing"
+      - alert: ColvennaMetricsAbsent
+        expr: absent(up{job="colvenna-operator"}) or absent(up{job="colvenna-catalog"})
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "no operator or colvenna-catalog pod is scraped: nothing is measured"
+      - alert: ColvennaHeartbeatFailing
+        expr: colvenna_source_heartbeat_ok == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.source {{"}}"}}: the heartbeat cannot be written to {{"{{"}} $labels.table {{"}}"}}; source to ODS is not measured"
+      - alert: ColvennaMeasuresStale
+        expr: time() - colvenna_source_measured_timestamp_seconds > 300 or time() - colvenna_table_measured_timestamp_seconds > 300
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.namespace {{"}}"}}/{{"{{"}} $labels.source {{"}}"}}{{"{{"}} $labels.laketable {{"}}"}} has not been measured for {{"{{"}} $value | humanizeDuration {{"}}"}}: its latency, lag and freshness are stale"
+      - alert: ColvennaSourceUnmeasured
+        expr: colvenna_source_phase{phase="Running", type=~"mysql|postgres"} == 1 unless on (namespace, source) colvenna_source_latency_seconds
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.namespace {{"}}"}}/{{"{{"}} $labels.source {{"}}"}} runs without a heartbeat seen in ODS: source to ODS is not measured"
+      - alert: ColvennaFreshnessUnmeasured
+        expr: colvenna_table_phase{phase="Running"} == 1 unless on (namespace, laketable) colvenna_table_freshness_seconds
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.namespace {{"}}"}}/{{"{{"}} $labels.laketable {{"}}"}} runs, but how fresh a query of it is is not measured (an upstream's heartbeat or freshness is missing)"
+      - alert: ColvennaLayerUnmeasured
+        expr: colvenna_table_phase{phase="Running"} == 1 unless on (namespace, laketable) colvenna_table_upstream_lag_seconds
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.namespace {{"}}"}}/{{"{{"}} $labels.laketable {{"}}"}} runs, but its lag behind what it reads is not measured"
+  - name: colvenna-lake-operations
+    rules:
+      - alert: ColvennaCommitConflicts
+        expr: sum by (table) (rate(colvenna_catalog_commits_total{outcome="conflict"}[10m])) > 0.05
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.table {{"}}"}}: {{"{{"}} printf `%.2f` $value {{"}}"}} commit conflicts a second; two writers compete"
+      - alert: ColvennaNoCheckpoint
+        expr: time() - colvenna_job_last_checkpoint_timestamp_seconds > 600
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{"{{"}} $labels.deployment {{"}}"}}: no checkpoint, and so no commit, for {{"{{"}} $value | humanizeDuration {{"}}"}}"
+      - alert: ColvennaCheckpointsFailing
+        expr: increase(colvenna_job_checkpoints_failed[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.deployment {{"}}"}}: checkpoints failed in the last 15 min"
+      - alert: ColvennaCompactionBacklog
+        expr: colvenna_table_level0_files > 50
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.table {{"}}"}}: {{"{{"}} $value {{"}}"}} level-0 files no compaction merged"
+      - alert: ColvennaSmallFiles
+        expr: colvenna_table_small_files > 1000
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.table {{"}}"}}: {{"{{"}} $value {{"}}"}} small files; a compaction task merges them"
+      - alert: ColvennaSnapshotsPiling
+        expr: colvenna_table_snapshots > 5000
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.table {{"}}"}} keeps {{"{{"}} $value {{"}}"}} snapshots; nothing expires them"
+      - alert: ColvennaTaskFailed
+        expr: colvenna_task_phase{phase="Failed"} == 1
+        labels: {severity: warning}
+        annotations:
+          summary: "{{"{{"}} $labels.laketask {{"}}"}} ({{"{{"}} $labels.type {{"}}"}} on {{"{{"}} $labels.table {{"}}"}}) failed"
+      - alert: ColvennaCatalogErrors
+        expr: sum(rate(colvenna_catalog_requests_total{status=~"5.."}[10m])) > 0.05
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "colvenna-catalog answers {{"{{"}} printf `%.2f` $value {{"}}"}} errors a second"
+      - alert: ColvennaCatalogCommitSlow
+        expr: histogram_quantile(0.99, sum by (le) (rate(colvenna_catalog_request_seconds_bucket{action="COMMIT"}[10m]))) > 2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "colvenna-catalog's commit p99 is {{"{{"}} $value | humanizeDuration {{"}}"}}"

@@ -1,0 +1,15 @@
+# Metrics only, inside the cluster; the NetworkPolicy limits who may connect.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-metrics
+  labels:
+    {{- include "colvenna-operator.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "colvenna-operator.selector" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: metrics

@@ -1,0 +1,16 @@
+replicas: 1
+watchNamespaces:
+  - colvenna-lake-kafka
+watchAnyNamespace: false
+nodeSelector:
+  colvenna-lake/role: query
+logLevel: WARN
+createAggregateRoles: false
+generateNetworkPolicy: true
+resources:
+  requests:
+    cpu: 200m
+    memory: 384Mi
+  limits:
+    cpu: 1000m
+    memory: 384Mi

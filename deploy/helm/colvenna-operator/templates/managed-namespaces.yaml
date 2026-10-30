@@ -1,0 +1,181 @@
+{{- /*
+The namespaces themselves are created and labelled by the installer, not this chart: uninstalling
+the chart must not delete the sources declared in them.
+*/ -}}
+{{- range $ns := .Values.managedNamespaces }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: colvenna-catalog-ca
+  namespace: {{ $ns }}
+  labels:
+    {{- include "colvenna-operator.labels" $ | nindent 4 }}
+data:
+  ca.crt: |
+    {{- required "catalog.caCert" $.Values.catalog.caCert | nindent 4 }}
+---
+# What the operator manages here: the declarations, their jobs, the jobs' token Secrets, the
+# source credentials and CA bundles the declarations name, and the query validations and task runs
+# it runs as Jobs (their pods' termination messages carry the verdict). A backfill suspends a
+# LakeTable's job through an annotation on the LakeTable. A LakeQuality's gate judges the
+# waivers of its table's checks.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $.Release.Name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "colvenna-operator.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [colvenna-lake.io]
+    resources:
+      - lakesources
+      - laketables
+      - laketasks
+      - lakeerasures
+      - lakedashboards
+      - lakequalities
+      - lakewaivers
+      - lakeicebergpublications
+    verbs: [get, list, watch, patch, update]
+  # Erasures and sources run maintenance as LakeTasks they own; a source deletes its finished ones.
+  - apiGroups: [colvenna-lake.io]
+    resources: [laketasks]
+    verbs: [create, delete]
+  - apiGroups: [colvenna-lake.io]
+    resources:
+      - lakesources/status
+      - lakesources/finalizers
+      - laketables/status
+      - laketables/finalizers
+      - laketasks/status
+      - laketasks/finalizers
+      - lakeerasures/status
+      - lakeerasures/finalizers
+      - lakedashboards/status
+      - lakedashboards/finalizers
+      - lakequalities/status
+      - lakequalities/finalizers
+      # The judgement of a waiver of a check's failed rules (LakeQuality's reconciler).
+      - lakewaivers/status
+      - lakeicebergpublications/status
+      - lakeicebergpublications/finalizers
+    verbs: [get, patch, update]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list]
+  - apiGroups: [flink.apache.org]
+    resources: [flinkdeployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # Savepoints taken before an erasure's subject was gone are disposed with their resource.
+  - apiGroups: [flink.apache.org]
+    resources: [flinkstatesnapshots]
+    verbs: [get, list, delete]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $.Release.Name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "colvenna-operator.labels" $ | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $.Release.Name }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ $.Release.Name }}
+  apiGroup: rbac.authorization.k8s.io
+---
+# The jobs' identity: IRSA to this namespace's Flink state, and what a JobManager needs to run
+# TaskManagers. Each namespace has its own role, so its jobs reach no other namespace's state.
+{{- $role := index $.Values.jobs.roleArns $ns }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $.Values.jobs.serviceAccount }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "colvenna-operator.labels" $ | nindent 4 }}
+  annotations:
+    eks.amazonaws.com/role-arn: {{ required (printf "jobs.roleArns.%s" $ns) $role | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $.Values.jobs.serviceAccount }}-runtime
+  namespace: {{ $ns }}
+  labels:
+    {{- include "colvenna-operator.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $.Values.jobs.serviceAccount }}-runtime
+  namespace: {{ $ns }}
+  labels:
+    {{- include "colvenna-operator.labels" $ | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $.Values.jobs.serviceAccount }}
+    namespace: {{ $ns }}
+roleRef:
+  kind: Role
+  name: {{ $.Values.jobs.serviceAccount }}-runtime
+  apiGroup: rbac.authorization.k8s.io
+---
+# Flink's REST endpoint authenticates nobody and accepts job submissions (HLD 12.1): only pods of
+# this namespace, the operator and the Flink Kubernetes Operator may reach the job pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: colvenna-flink-jobs
+  namespace: {{ $ns }}
+  labels:
+    {{- include "colvenna-operator.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      type: flink-native-kubernetes
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Release.Namespace }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.flinkOperatorNamespace }}
+      ports:
+        - protocol: TCP
+          port: 8081
+{{- end }}

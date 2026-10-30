@@ -1,0 +1,57 @@
+# Kafka version the Strimzi operator runs (Strimzi 1.2.0 supports 4.3.1).
+kafkaVersion: 4.3.1
+# The broker's image, that version's: dev-kafka.sh gives the environment's own copy of Strimzi's
+# Kafka 4.3.1 image, by digest (deploy/images/third-party.tsv). Empty, the operator picks its
+# default for kafkaVersion, from upstream.
+image: ""
+
+# Storage of the single KRaft node (controller and broker), which holds both the logs and the
+# cluster metadata.
+#   persistent-claim: an EBS volume; what `helm uninstall` leaves behind follows deleteClaim.
+#   ephemeral: an emptyDir; every record is lost when the pod goes, uninstall included.
+storage:
+  type: persistent-claim
+  size: 5Gi
+  class: ""
+  # false (default): uninstall keeps the PersistentVolumeClaim, so a reinstall under the same
+  # release name finds its topics and records again. true: uninstall deletes the claim and the
+  # data with it. Strimzi reads this from the live node pool when the cluster is deleted, so set
+  # it with `helm upgrade` before `helm uninstall`.
+  deleteClaim: false
+
+# Reinstalling onto a retained volume: Strimzi gives a new Kafka resource a new cluster id, and a
+# broker refuses a volume of another cluster. With the id the volume was written under, the
+# resource starts paused, so that dev-kafka.sh can put the id in its status before the first
+# reconcile (Strimzi's procedure for recovering a cluster from persistent volumes).
+recovery:
+  clusterId: ""
+
+resources:
+  requests: {cpu: 250m, memory: 2Gi}
+  limits: {cpu: "1", memory: 2Gi}
+heap: 1024m
+
+# Node affinity of the Kafka and entity operator pods: nodes whose label `key` has one of `values`.
+nodeRole:
+  key: colvenna-lake/role
+  values: [query]
+
+# Clients reach the listener only from pods in namespaces carrying this label (the Strimzi
+# operator turns it into the cluster's NetworkPolicy).
+clientNamespaceLabel: colvenna-lake.io/dev-kafka-client
+
+# A topic's optional config adds topic settings beside its retention, e.g.
+# {message.timestamp.type: LogAppendTime} (the release performance run's events).
+topics:
+  - name: dev-events
+    partitions: 3
+    # One day, as for development data; never production retention.
+    retentionMs: 86400000
+
+# SCRAM-SHA-512 users. Strimzi stores each password in a Secret named after the user.
+users:
+  - name: dev-producer
+    write: [dev-events]
+  - name: dev-consumer
+    read: [dev-events]
+    groups: [dev-]

@@ -1,0 +1,89 @@
+# colvenna-operator: one replica with leader election; it holds no state of its own.
+image:
+  repository: ""
+  digest: ""
+
+catalog:
+  uri: https://colvenna-catalog.colvenna-catalog.svc:8181
+  # Secret in the release namespace with the operator's own colvenna-catalog token (key "token"),
+  # an admin principal with catalog-wide MANAGE (deploy/scripts/operator/install-operator.sh).
+  tokenSecret: colvenna-operator-catalog-token
+  # colvenna-catalog's private CA, PEM. Copied into every managed namespace for the jobs.
+  caCert: ""
+
+jobs:
+  # Job images by kind, pinned by digest: mysql, postgres and mongodb (CDC), kafka (event
+  # streams), sql (LakeTable jobs).
+  images: {}
+  serviceAccount: colvenna-flink
+  # IAM role (IRSA) of the job service account in each managed namespace, by namespace: that
+  # namespace's Flink state only, no table data (ColvennaLakeOperator's JobRoleArns).
+  roleArns: {}
+  # s3://<bucket>/<prefix>: checkpoints, savepoints and HA metadata, one prefix per job.
+  checkpointRoot: ""
+  nodeSelector: {}
+  tolerations: []
+
+# Namespaces where LakeSources and LakeTables are declared and their jobs run. They must exist,
+# with Pod Security "restricted" and the catalog client label (the installer creates them); the
+# chart gives the operator rights there and nowhere else and prepares the job service account and
+# CA.
+managedNamespaces: []
+
+# Where the Flink Kubernetes Operator runs: it must reach the jobs' REST endpoints.
+flinkOperatorNamespace: flink-operator
+
+mysqlServerIdRange: "6000-6999"
+reconcileMaxRows: 2000000
+
+# What the installer verified of the warehouse bucket (no object versions, no replication), with
+# when; an erasure reports its storage copy PendingEvidence without it.
+storageEvidence: ""
+
+# The platform's Doris for LakeDashboards (deploy/scripts/doris/install-doris.sh): its FE's MySQL
+# endpoint, and the Secret with root's password, which the operator alone reads. Without a host,
+# dashboards wait for a Doris.
+doris:
+  host: ""
+  port: 9030
+  namespace: colvenna-doris
+  adminSecret: colvenna-doris-admin
+
+# The BI interface (deploy/scripts/entry/install-bi.sh): the Secret in its namespace where the operator
+# publishes the Doris identity of each dashboard user with a sign-in name, and may change nothing
+# else there. Without a namespace, sign-in users are reported but not published.
+bi:
+  namespace: ""
+  credentialsSecret: colvenna-bi-doris-users
+
+# Where the operator reports lineage, as OpenLineage run events (LLD "血缘"): the endpoint
+# (Marquez's is http://<service>:5000/api/v1/lineage; deploy/scripts/open-layer/install-marquez.sh), and,
+# for a catalog that requires one, a Secret in the release namespace with its API key (key
+# "api-key"), sent as a bearer token. Without a url nothing is reported.
+lineage:
+  url: ""
+  apiKeySecret: ""
+  intervalSeconds: 60
+
+# The open layer's Iceberg catalog for LakeIcebergPublications (deploy/scripts/open-layer/install-polaris.sh):
+# Polaris's API, the EXTERNAL catalog published to, and the Secret with the operator principal's
+# client-id and client-secret. Without a uri, publications wait for a catalog.
+polaris:
+  uri: ""
+  catalog: colvenna_open
+  credentialsSecret: polaris-operator
+
+# Pods in namespaces with this label may scrape the operator's metrics.
+metricsClientLabel: colvenna-lake.io/monitoring
+
+podAnnotations: {}
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 1Gi
+  limits:
+    memory: 2Gi
+
+nodeSelector: {}
+tolerations: []

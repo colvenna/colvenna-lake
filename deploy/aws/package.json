@@ -1,0 +1,23 @@
+{
+  "name": "@colvenna-lake/aws",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "synth": "cdk synth",
+    "test": "node --test --require ts-node/register test/*.test.ts"
+  },
+  "dependencies": {
+    "@aws-cdk/lambda-layer-kubectl-v36": "2.0.1",
+    "aws-cdk-lib": "2.274.0",
+    "cdk-nag": "2.38.2",
+    "constructs": "10.8.1",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.6",
+    "aws-cdk": "2.1146.0",
+    "ts-node": "10.9.2",
+    "typescript": "5.9.3"
+  }
+}

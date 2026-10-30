@@ -1,0 +1,32 @@
+{{- if .Values.bi.namespace }}
+# The operator reads and changes the BI interface's Secret of Doris identities, that one Secret and
+# nothing else there (LLD "BI 查询界面"). The installer makes it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-bi-credentials
+  namespace: {{ .Values.bi.namespace }}
+  labels:
+    {{- include "colvenna-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [{{ .Values.bi.credentialsSecret | quote }}]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-bi-credentials
+  namespace: {{ .Values.bi.namespace }}
+  labels:
+    {{- include "colvenna-operator.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ .Release.Name }}-bi-credentials
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

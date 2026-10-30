@@ -1,0 +1,178 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "colvenna-operator.labels" . | nindent 4 }}
+spec:
+  # Leader election keeps a second replica idle; one is enough while it holds no state.
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "colvenna-operator.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "colvenna-operator.labels" . | nindent 8 }}
+      annotations:
+        checksum/catalog-ca: {{ .Values.catalog.caCert | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: colvenna-operator
+          image: "{{ required "image.repository" .Values.image.repository }}@{{ required "image.digest" .Values.image.digest }}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: COLVENNA_WATCH_NAMESPACES
+              value: {{ join "," .Values.managedNamespaces | quote }}
+            - name: COLVENNA_CATALOG_URI
+              value: {{ .Values.catalog.uri | quote }}
+            - name: COLVENNA_CATALOG_TOKEN_FILE
+              value: /token/token
+            - name: COLVENNA_CATALOG_CA_FILE
+              value: /ca/ca.crt
+            - name: COLVENNA_CHECKPOINT_ROOT
+              value: {{ required "jobs.checkpointRoot" .Values.jobs.checkpointRoot | quote }}
+            - name: COLVENNA_FLINK_SERVICE_ACCOUNT
+              value: {{ .Values.jobs.serviceAccount | quote }}
+            - name: COLVENNA_JOB_IMAGES
+              value: {{ .Values.jobs.images | toJson | quote }}
+            - name: COLVENNA_JOB_NODE_SELECTOR
+              value: {{ .Values.jobs.nodeSelector | toJson | quote }}
+            - name: COLVENNA_JOB_TOLERATIONS
+              value: {{ .Values.jobs.tolerations | toJson | quote }}
+            - name: COLVENNA_MYSQL_SERVER_ID_RANGE
+              value: {{ .Values.mysqlServerIdRange | quote }}
+            - name: COLVENNA_RECONCILE_MAX_ROWS
+              value: {{ .Values.reconcileMaxRows | int64 | quote }}
+            - name: COLVENNA_METRICS_PORT
+              value: "9100"
+            {{- with .Values.doris.host }}
+            # The platform's Doris for dashboards (deploy/scripts/doris/install-doris.sh).
+            - name: COLVENNA_DORIS_HOST
+              value: {{ . | quote }}
+            - name: COLVENNA_DORIS_PORT
+              value: {{ $.Values.doris.port | quote }}
+            - name: COLVENNA_DORIS_ADMIN_SECRET
+              value: {{ printf "%s/%s" $.Values.doris.namespace $.Values.doris.adminSecret | quote }}
+            {{- end }}
+            {{- with .Values.bi.namespace }}
+            # The BI interface's Secret of dashboard users' Doris identities.
+            - name: COLVENNA_BI_CREDENTIALS
+              value: {{ printf "%s/%s" . $.Values.bi.credentialsSecret | quote }}
+            {{- end }}
+            {{- with .Values.polaris.uri }}
+            # The open layer's Iceberg catalog (deploy/scripts/open-layer/install-polaris.sh).
+            - name: COLVENNA_POLARIS_URI
+              value: {{ . | quote }}
+            - name: COLVENNA_POLARIS_CATALOG
+              value: {{ $.Values.polaris.catalog | quote }}
+            - name: COLVENNA_POLARIS_CREDENTIALS_DIR
+              value: /polaris
+            {{- end }}
+            {{- with .Values.storageEvidence }}
+            # What the installer verified of the warehouse bucket; an erasure's evidence.
+            - name: COLVENNA_STORAGE_EVIDENCE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.lineage.url }}
+            # The OpenLineage endpoint the leader reports lineage to (LLD "血缘").
+            - name: COLVENNA_LINEAGE_URL
+              value: {{ . | quote }}
+            - name: COLVENNA_LINEAGE_STATE
+              value: {{ printf "%s-lineage" $.Release.Name | quote }}
+            - name: COLVENNA_LINEAGE_INTERVAL_SECONDS
+              value: {{ $.Values.lineage.intervalSeconds | quote }}
+            {{- if $.Values.lineage.apiKeySecret }}
+            - name: COLVENNA_LINEAGE_API_KEY_FILE
+              value: /lineage/api-key
+            {{- end }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: 9100
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: token
+              mountPath: /token
+              readOnly: true
+            - name: ca
+              mountPath: /ca
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            {{- if and .Values.lineage.url .Values.lineage.apiKeySecret }}
+            - name: lineage
+              mountPath: /lineage
+              readOnly: true
+            {{- end }}
+            {{- if .Values.polaris.uri }}
+            - name: polaris
+              mountPath: /polaris
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: token
+          secret:
+            secretName: {{ .Values.catalog.tokenSecret }}
+        - name: ca
+          configMap:
+            name: {{ .Release.Name }}-catalog-ca
+        - name: tmp
+          emptyDir: {}
+        {{- if and .Values.lineage.url .Values.lineage.apiKeySecret }}
+        - name: lineage
+          secret:
+            secretName: {{ .Values.lineage.apiKeySecret }}
+            items:
+              - key: api-key
+                path: api-key
+        {{- end }}
+        {{- if .Values.polaris.uri }}
+        - name: polaris
+          secret:
+            secretName: {{ .Values.polaris.credentialsSecret }}
+        {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-catalog-ca
+  labels:
+    {{- include "colvenna-operator.labels" . | nindent 4 }}
+data:
+  ca.crt: |
+    {{- required "catalog.caCert" .Values.catalog.caCert | nindent 4 }}

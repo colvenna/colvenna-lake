@@ -1,0 +1,64 @@
+# Image pinned by digest (Superset 6.1.0 with colvenna_bi); deploy/scripts/entry/build-bi.sh builds it.
+image:
+  repository: ""
+  digest: ""
+
+# Kubernetes identity; the IRSA role is the entry stack's BiRoleArn (signs users out, nothing else).
+serviceAccount:
+  name: colvenna-bi
+  roleArn: ""
+
+# The environment's AWS region; the install script sets it (deploy/env.sh's COLVENNA_REGION).
+region: ""
+
+# The entry the BI interface sits behind (the entry stack's outputs).
+entry:
+  # e.g. https://bi.colvenna-uat.example.com
+  publicUrl: ""
+  # The user pool's sign-in domain.
+  signInUrl: ""
+  userPoolId: ""
+  clientId: ""
+  # The load balancer that signs the claims the BI interface accepts.
+  loadBalancerArn: ""
+  # The target group the pod is bound to.
+  targetGroupArn: ""
+  # The load balancer's session cookie for this host (the stack's biSessionCookie).
+  sessionCookie: ""
+  # Which user pool group grants which role (the stack's RoleGroups).
+  roleGroups: {}
+  # The public subnets the load balancer sits in: the only sources the pod accepts.
+  subnetCidrs: []
+
+# The platform's Doris FE (MySQL protocol): the only database the BI interface connects to.
+doris:
+  host: ""
+  port: 9030
+
+# Secrets the installer makes in the release namespace:
+secrets:
+  # Keys secret-key (Superset's SECRET_KEY) and guest-token-secret.
+  app: colvenna-bi-app
+  # Key uri: the metadata database (PostgreSQL), over verified TLS.
+  metadata: colvenna-bi-metadata
+  # The dashboard users' Doris identities, which the operator publishes (BiCredentials).
+  dorisUsers: colvenna-bi-doris-users
+# ConfigMap with key ca.pem, the RDS CA the metadata URI's sslrootcert points at.
+metadataCaConfigMap: colvenna-bi-rds-ca
+
+nodeSelector: {}
+tolerations: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 1Gi
+  limits:
+    cpu: "1"
+    memory: 2Gi
+syncResources:
+  requests:
+    cpu: 20m
+    memory: 384Mi
+  limits:
+    memory: 768Mi

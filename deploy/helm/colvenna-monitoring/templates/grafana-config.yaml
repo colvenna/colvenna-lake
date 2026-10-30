@@ -1,0 +1,35 @@
+# Grafana's data source, and Colvenna Lake's panels (files/dashboard.json).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-grafana
+  labels:
+    {{- include "colvenna-monitoring.labels" . | nindent 4 }}
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: colvenna-prometheus
+        type: prometheus
+        access: proxy
+        url: http://{{ .Release.Name }}-prometheus.{{ .Release.Namespace }}.svc:9090
+        isDefault: true
+        editable: false
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: colvenna-lake
+        type: file
+        disableDeletion: true
+        allowUiUpdates: false
+        options: {path: /var/lib/grafana/dashboards}
+  colvenna-lake.json: |
+{{ .Files.Get "files/dashboard.json"
+    | replace "\"__TARGET_LAYER_P95__\"" (toString .Values.latency.layerP95)
+    | replace "\"__TARGET_LAYER_P99__\"" (toString .Values.latency.layerP99)
+    | replace "\"__TARGET_WHOLE_P95__\"" (toString .Values.latency.sourceToDashboardP95)
+    | replace "\"__TARGET_WHOLE_P99__\"" (toString .Values.latency.sourceToDashboardP99)
+    | replace "\"__TARGET_DORIS_P95__\"" (toString .Values.latency.dorisCopyP95)
+    | replace "\"__TARGET_DORIS_P99__\"" (toString .Values.latency.dorisCopyP99)
+    | indent 4 }}

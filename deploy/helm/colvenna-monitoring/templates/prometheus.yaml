@@ -1,0 +1,98 @@
+# Prometheus scrapes each pod of the operator and of colvenna-catalog, and evaluates Colvenna Lake's alert
+# rules (files/rules.yaml). In-cluster only: its Service is ClusterIP and its NetworkPolicy admits
+# Grafana and the pods labelled prometheus.readerLabel in namespaces labelled with it too (the
+# console's); people reach it through Grafana, the console or an authenticated kubectl
+# port-forward.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-prometheus
+  labels:
+    {{- include "colvenna-monitoring.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: {{ .Values.prometheus.storageClassName }}
+  resources: {requests: {storage: {{ .Values.prometheus.storage }}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-prometheus
+  labels:
+    {{- include "colvenna-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prometheus
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels:
+      {{- include "colvenna-monitoring.selector" (list . "prometheus") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "colvenna-monitoring.labels" . | nindent 8 }}
+        app.kubernetes.io/component: prometheus
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/prometheus-config.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-prometheus
+      securityContext: {runAsNonRoot: true, runAsUser: 65534, runAsGroup: 65534, fsGroup: 65534, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: prometheus
+          image: {{ required "images.prometheus" .Values.images.prometheus }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time={{ .Values.prometheus.retention }}
+            - --web.listen-address=:9090
+          ports: [{name: http, containerPort: 9090}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          readinessProbe: {httpGet: {path: /-/ready, port: http}, periodSeconds: 10}
+          resources: {{- toYaml .Values.prometheus.resources | nindent 12 }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus/prometheus.yml, subPath: prometheus.yml}
+            - {name: config, mountPath: /etc/prometheus/rules/rules.yaml, subPath: rules.yaml}
+            - {name: data, mountPath: /prometheus}
+      volumes:
+        - name: config
+          configMap: {name: {{ .Release.Name }}-prometheus}
+        - name: data
+          persistentVolumeClaim: {claimName: {{ .Release.Name }}-prometheus}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-prometheus
+  labels:
+    {{- include "colvenna-monitoring.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "colvenna-monitoring.selector" (list . "prometheus") | nindent 4 }}
+  ports: [{name: http, port: 9090, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-prometheus
+  labels:
+    {{- include "colvenna-monitoring.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "colvenna-monitoring.selector" (list . "prometheus") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "colvenna-monitoring.selector" (list . "grafana") | nindent 14 }}
+        # The console's pipeline reads metrics and alerts: its pods, labelled, in its
+        # namespace, labelled too.
+        - namespaceSelector:
+            matchLabels:
+              {{ .Values.prometheus.readerLabel }}: "true"
+          podSelector:
+            matchLabels:
+              {{ .Values.prometheus.readerLabel }}: "true"
+      ports: [{port: 9090, protocol: TCP}]

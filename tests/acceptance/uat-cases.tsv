@@ -1,0 +1,45 @@
+case	phase	labels	configs	evidence
+UAT-DEP-01	operator	install	fixtures	install/verdicts.tsv (check-install.sh <root> --fresh); the install's install-*/steps.tsv, verify.log
+UAT-DEP-02	operator	install-platform	platform	install-platform/verdicts.tsv (check-install.sh <root> --fresh --platform); the install's install-*/steps.tsv, verify.log
+UAT-DEP-03	deploy	deploy-repeat	both	deploy-repeat/verdicts.tsv
+UAT-DEP-04	deploy	deploy-resume	both	deploy-resume/verdicts.tsv
+UAT-DEP-05	deploy	deploy-refusals	both	deploy-refusals/verdicts.tsv
+UAT-DEP-06	prep	reinstall	both	reinstall/kind (upgrade), reinstall/verdicts.tsv
+UAT-DEP-07	operator	uninstall	both	uninstall/verdicts.tsv (check-uninstall.sh); inventory.sh <before> --account; uninstall-*/uninstall.log, leftovers.txt
+UAT-DEP-08	deploy	deploy-release-refusals	both	deploy-release-refusals/verdicts.tsv; the release install's install-*/install.log
+UAT-DEP-09	operator	metadata-restore	both	metadata-restore/verdicts.tsv (run-metadata-restore.sh <root>: both drills, snapshot-* and time-*); metadata-restore/{snapshot,time}/restore/timeline.txt, catalog-stopped-seconds.txt
+UAT-CAT-01	catalog	catalog-flink	both	catalog-flink/steps.txt
+UAT-CAT-02	catalog	catalog-spark,spark-image	both	catalog-spark/steps.txt
+UAT-CAT-03	catalog	catalog-doris	both	catalog-doris/checks.txt, catalog-doris/doris-touches.txt
+UAT-CAT-04	catalog	catalog-session	both	catalog-session/steps.txt
+UAT-CAT-05	catalog	catalog-tokens	both	catalog-tokens/data-token-checks.txt
+UAT-CAT-06	catalog	catalog-authorization	both	catalog-authorization/authorization-checks.txt
+UAT-CAT-07	catalog	catalog-access	both	catalog-access/access-checks.txt
+UAT-CAT-08	catalog	catalog-health	both	catalog-health/health.txt
+UAT-CAT-09	catalog	catalog-logs	both	catalog-logs/endpoint-check.txt
+UAT-CAT-10	faults	catalog-commit-faults	both	catalog-commit-faults/faults.txt
+UAT-CAT-11	faults	catalog-recovery	both	catalog-recovery/timeline.txt
+UAT-CAT-12	renewal	renewal,renewal-flink,renewal-spark,renewal-catalog,renewal-catalog-back,spark-image	both	renewal/run.txt
+UAT-SRC-01	ingest	cdc	fixtures	cdc/verdicts.tsv
+UAT-TBL-01	ingest	tables	fixtures	tables/verdicts.tsv
+UAT-TSK-01	ingest	tasks	fixtures	tasks/verdicts.tsv
+UAT-SRC-02	ingest	mongo	both	mongo/verdicts.tsv
+UAT-GOV-01	ingest	enforcement	fixtures	enforcement/verdicts.tsv
+UAT-MON-01	ingest	monitoring	fixtures	monitoring/verdicts.tsv
+UAT-SRC-03	kafka	kafka	fixtures	kafka/verdicts.tsv
+UAT-SRC-04	kafka	kafka-cdc	fixtures	kafka-cdc/verdicts.tsv
+UAT-QUA-01	kafka	quality	fixtures	quality/verdicts.tsv
+UAT-ICE-01	kafka	trino	fixtures	trino/verdicts.tsv
+UAT-ICE-02	kafka	iceberg	fixtures	iceberg/verdicts.tsv
+UAT-ICE-03	kafka	iceberg-layered	fixtures	iceberg-layered/verdicts.tsv
+UAT-NS-01	namespaces	namespaces,namespaces-stack,namespaces-operator,namespaces-operator-back,namespaces-stack-back	fixtures	namespaces/verdicts.tsv
+UAT-LIN-01	solo	lineage	fixtures	lineage/verdicts.tsv
+UAT-GOV-02	solo	governance	fixtures	governance/verdicts.tsv
+UAT-ICE-04	solo	iceberg-erasure	fixtures	iceberg-erasure/verdicts.tsv
+UAT-CON-01	solo	operations	fixtures	operations/verdicts.tsv
+UAT-DSH-01	solo	dashboards	fixtures	dashboards/verdicts.tsv
+UAT-BI-01	console	bi	fixtures	bi/verdicts.tsv
+UAT-CON-02	console	pipeline	fixtures	pipeline/verdicts.tsv
+UAT-ENT-01	entry	entry,entry-stack,entry-stack-back	both	entry/verdicts.tsv
+UAT-NODE-01	nodes	node-job	fixtures	node-job/verdicts.tsv
+UAT-NODE-02	nodes	node-query	fixtures	node-query/verdicts.tsv

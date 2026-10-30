@@ -1,0 +1,153 @@
+# ASH (Automated Security Helper, v3.5.4+) settings for this repository: what a scan of the tracked
+# tree (git archive) reports as actionable, and the findings it does not, each with its reason.
+# Accepted risks carry an expiration date; review them when it passes. ASH 3.5.4 drops a date that
+# has passed and keeps the suppression on, so there the date is only a reminder; ASH 3.7.0 and later
+# stop applying an expired suppression. Run the scan from a clean export of the tree, not the
+# working copy, so dependencies and build outputs stay out:
+#   git archive HEAD | tar -x -C <dir>; <ash-repo>/ash --source-dir <dir> --output-dir <dir>/.ash/ash_output
+project_name: colvenna-lake
+fail_on_findings: true
+global_settings:
+  severity_threshold: MEDIUM
+  suppressions:
+    # --- detect-secrets and checkov CKV_SECRET_6: no secret values. Each entry is a rule in one file,
+    #     never a line: the line-pinned entries stopped matching as the files grew (#300). A file is
+    #     listed only for what its reason says it holds; a finding of another rule there is still
+    #     reported.
+    - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      path: deploy/images/doris/reader-lock.json
+      reason: "SHA-256 checksums of the reader's artifacts, which prepare-reader.py verifies"
+    - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      path: "docs/history/**"
+      reason: "Git commit ids in the development records"
+    - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      path: deploy/images/colvenna-catalog.json
+      reason: "The pinned Colvenna Catalog release's commit ids, which fetch-catalog.sh and check-release.sh check its image and chart against"
+    - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      path: "release/*/manifest.json"
+      reason: "A release manifest: commit ids, the CLI binaries' SHA-256, chart trees and file blobs, which check-release.sh verifies"
+    # A chart's default values: the keys that match name the Kubernetes Secrets the chart reads
+    # (tokenSecret: colvenna-operator-catalog-token); the values are made at install, in the Secrets.
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: deploy/helm/colvenna-console/values.yaml
+      reason: "Names of the Kubernetes Secrets the chart reads (confirmKeySecret), no values"
+    - rule_id: CKV_SECRET_6
+      path: deploy/helm/colvenna-console/values.yaml
+      reason: "Names of the Kubernetes Secrets the chart reads (confirmKeySecret), no values"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: deploy/helm/colvenna-monitoring/values.yaml
+      reason: "Names of the Kubernetes Secrets the chart reads (adminSecret), no values"
+    - rule_id: CKV_SECRET_6
+      path: deploy/helm/colvenna-monitoring/values.yaml
+      reason: "Names of the Kubernetes Secrets the chart reads (adminSecret), no values"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: deploy/helm/colvenna-operator/values.yaml
+      reason: "Names of the Kubernetes Secrets the chart reads (tokenSecret, adminSecret, credentialsSecret), no values"
+    - rule_id: CKV_SECRET_6
+      path: deploy/helm/colvenna-operator/values.yaml
+      reason: "Names of the Kubernetes Secrets the chart reads (tokenSecret, adminSecret, credentialsSecret), no values"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: deploy/scripts/open-layer/install-polaris.sh
+      reason: "A volume's secretName in the chart values the script writes, no value"
+    - rule_id: SECRET-BASIC-AUTH-CREDENTIALS
+      path: deploy/scripts/entry/install-bi.sh
+      reason: "A connection string template, superset:%s@…; the password is generated at install (or read back from the colvenna-bi-metadata Secret) and kept only in that Secret"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: colvenna-operator/src/main/java/com/colvenna/lake/operator/source/Tls.java
+      reason: "The password of a trust store holding only a source's public CA certificates, for the MySQL driver"
+    # Test code: made-up values, published test vectors, and names.
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: colvenna-bi/tests/test_colvenna_bi.py
+      reason: "A unit test's fake Doris passwords (pw-<user>)"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: colvenna-console/internal/pipeline/pipeline_test.go
+      reason: "A unit test checking that secrets never reach the page; strings, no values"
+    - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      path: colvenna-console/internal/server/operations_test.go
+      reason: "A unit test's fixed confirmation key, 0123456789abcdef twice"
+    - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      path: colvenna-jobs/src/test/java/com/colvenna/lake/jobs/sql/QualityCheckTest.java
+      reason: "A unit test's rule version id"
+    - rule_id: SECRET-BASE64-HIGH-ENTROPY-STRING
+      path: deploy/aws/test/names.test.ts
+      reason: "Expected resource names with made-up CDK suffixes (warehouse0123abcd-abcdefghijkl)"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: tests/acceptance/operations/run-operations.sh
+      reason: "The word secret in kubectl verbs and resource kinds, no value"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: tests/acceptance/security/inventory.sh
+      reason: "A JMESPath query asking whether a client has a secret (ClientSecret!=null), no value"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: tests/acceptance/security/run-denials.sh
+      reason: "A test user's password generated at run time (os.urandom), no value in the file"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: tests/acceptance/test_entry.py
+      reason: "Published TOTP test secrets: the Google Authenticator example key and RFC 6238's test secret"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: tests/acceptance/test_catalog_chart.py
+      reason: "Kubernetes Secret names in a unit test's chart values (databaseSecret, tlsSecret), no values"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: tests/acceptance/test_deploy.py
+      reason: "Kubernetes Secret names in a unit test's inventory and leftovers, no values"
+    - rule_id: SECRET-BASE64-HIGH-ENTROPY-STRING
+      path: tests/acceptance/test_deploy.py
+      reason: "Made-up CloudFormation logical ids with CDK suffixes (FlinkImageRepository0A1B2C3D)"
+    - rule_id: SECRET-BASE64-HIGH-ENTROPY-STRING
+      path: tests/acceptance/test_deploy_refusals.py
+      reason: "Made-up Lambda log group names with CDK suffixes"
+    - rule_id: SECRET-BASE64-HIGH-ENTROPY-STRING
+      path: tests/acceptance/test_portability.py
+      reason: "A synthetic hosted zone id (Z0123456789ABCDEFGHIJK) the known-values check must not take for a real one"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: tests/acceptance/test_exposure.py
+      reason: "Made-up passwords and client secrets (s3cr3t) that the exact scan and the evidence scrub must find"
+    - rule_id: SECRET-BASE64-HIGH-ENTROPY-STRING
+      path: tests/acceptance/test_exposure.py
+      reason: "Made-up session cookies, client secrets and resource ids that the exact scan and the redaction test must find"
+    - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      path: tests/acceptance/test_exposure.py
+      reason: "Made-up resource ids the redaction test checks are gone (1a2b3c4d5e6f7a8b)"
+    - rule_id: SECRET-AWS-ACCESS-KEY
+      path: tests/acceptance/test_exposure.py
+      reason: "A made-up access key id (ASIAABCDEFGHIJKLMNOP) that the evidence scrub must find"
+    - rule_id: SECRET-JSON-WEB-TOKEN
+      path: tests/acceptance/test_exposure.py
+      reason: "An unsigned made-up token (alg none) that the evidence scrub must not mistake for a credential"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: tests/upstream/flink-cdc/repro/src/test/java/com/colvenna/lake/upstream/cdc/MySqlSource.java
+      reason: "The password of the throwaway MySQL that run-repro.sh starts in Docker on loopback for each run, synthetic rows only"
+    # --- checkov: Dockerfiles --------------------------------------------------------------------
+    - rule_id: CKV_DOCKER_2
+      path: "**/Dockerfile"
+      reason: "Kubernetes ignores Docker HEALTHCHECK: the services have liveness and readiness probes, the Flink operator watches the job pods, and the Spark test pods are one-shot"
+    - rule_id: CKV_DOCKER_2
+      path: "**/*.Dockerfile"
+      reason: "Kubernetes ignores Docker HEALTHCHECK: the services have liveness and readiness probes, the Flink operator watches the job pods, and the Spark test pods are one-shot"
+    - rule_id: CKV_DOCKER_3
+      path: "deploy/images/doris/*.Dockerfile"
+      reason: "Accepted: Doris FE and BE images run as root; they run in their own namespace at baseline Pod Security (deploy/scripts/doris/install-doris.sh)"
+      expiration: "2027-04-21"
+    - rule_id: CKV_DOCKER_7
+      path: colvenna-jobs/image/Dockerfile
+      reason: "FROM ${FOUNDATION_IMAGE}: build-images.sh passes the Flink base image by digest"
+    # --- bandit: acceptance test code ----------------------------------------------------------
+    - rule_id: B307
+      path: tests/acceptance/status.py
+      reason: "Evaluates the acceptance scripts' own condition expressions over a status document, with builtins limited to all/any/len/str/sum"
+    - rule_id: B307
+      path: tests/acceptance/test_compare.py
+      reason: "Unit test of status.py's condition expressions"
+    - rule_id: B608
+      path: "tests/acceptance/cdc/*_contract.py"
+      reason: "DDL for the test source tables, built from the test code's own constants"
+    - rule_id: B310
+      path: tests/acceptance/lineage/lineage.py
+      reason: "Reads Marquez through a local port-forward URL the test script builds"
+    - rule_id: B310
+      path: tests/acceptance/pipeline/compare.py
+      reason: "Reads Prometheus and Marquez through local port-forward URLs the test script builds"
+    # --- grype: the upstream reproduction harness --------------------------------------------
+    - rule_id: "GHSA-*"
+      path: "tests/upstream/flink-cdc/*/pom.xml"
+      reason: "Accepted: a local, test-scope harness reproducing FLINK-40741 against synthetic data; never deployed or run in UAT; versions pinned to match the upstream it reproduces"
+      expiration: "2027-04-21"

@@ -1,0 +1,6 @@
+# The build context is the repository (the console uses the CLI's operations, colvenna-cli/ops):
+# only the two modules.
+*
+!colvenna-console/
+!colvenna-cli/
+colvenna-cli/dist/

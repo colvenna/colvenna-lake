@@ -1,0 +1,40 @@
+{
+  "about": "What Colvenna Catalog's own EKS stack grants its server and data roles, normalized: deploy/aws/src/eks-stack.ts at the catalog release that deploy/images/colvenna-catalog.json pins (candidate), synthesized for namespace and service account colvenna-catalog and warehouse prefix warehouse. catalog-roles.test.ts holds Colvenna Lake's catalog stack to it; with COLVENNA_CATALOG_EKS_TEMPLATE=<that stack's synthesized template>, it checks this file against the stack itself.",
+  "repository": "https://github.com/colvenna/colvenna-catalog",
+  "candidate": "v1.0.0-rc.1",
+  "path": "deploy/aws/src/eks-stack.ts",
+  "roles": {
+    "server": {
+      "maxSessionDuration": null,
+      "trust": [
+        "Allow sts:AssumeRoleWithWebIdentity arn:aws:iam::<account>:oidc-provider/<issuer> if StringEquals <issuer>:aud=sts.amazonaws.com if StringEquals <issuer>:sub=system:serviceaccount:colvenna-catalog:colvenna-catalog"
+      ],
+      "grants": [
+        "Allow s3:AbortMultipartUpload arn:aws:s3:::<bucket>/warehouse/*",
+        "Allow s3:DeleteObject arn:aws:s3:::<bucket>/warehouse/*",
+        "Allow s3:GetBucketLocation arn:aws:s3:::<bucket>",
+        "Allow s3:GetObject arn:aws:s3:::<bucket>/warehouse/*",
+        "Allow s3:ListBucket arn:aws:s3:::<bucket> if StringLike s3:prefix=warehouse/*",
+        "Allow s3:ListBucketMultipartUploads arn:aws:s3:::<bucket> if StringLike s3:prefix=warehouse/*",
+        "Allow s3:ListMultipartUploadParts arn:aws:s3:::<bucket>/warehouse/*",
+        "Allow s3:PutObject arn:aws:s3:::<bucket>/warehouse/*"
+      ]
+    },
+    "data": {
+      "maxSessionDuration": 43200,
+      "trust": [
+        "Allow sts:AssumeRoleWithWebIdentity arn:aws:iam::<account>:oidc-provider/<issuer> if StringEquals <issuer>:aud=sts.amazonaws.com if StringEquals <issuer>:sub=system:serviceaccount:colvenna-catalog:colvenna-catalog"
+      ],
+      "grants": [
+        "Allow s3:AbortMultipartUpload arn:aws:s3:::<bucket>/warehouse/*",
+        "Allow s3:DeleteObject arn:aws:s3:::<bucket>/warehouse/*",
+        "Allow s3:GetBucketLocation arn:aws:s3:::<bucket>",
+        "Allow s3:GetObject arn:aws:s3:::<bucket>/warehouse/*",
+        "Allow s3:ListBucket arn:aws:s3:::<bucket> if StringLike s3:prefix=warehouse/*",
+        "Allow s3:ListBucketMultipartUploads arn:aws:s3:::<bucket> if StringLike s3:prefix=warehouse/*",
+        "Allow s3:ListMultipartUploadParts arn:aws:s3:::<bucket>/warehouse/*",
+        "Allow s3:PutObject arn:aws:s3:::<bucket>/warehouse/*"
+      ]
+    }
+  }
+}

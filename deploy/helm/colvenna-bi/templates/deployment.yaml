@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "colvenna-bi.labels" . | nindent 4 }}
+spec:
+  # One web process: no results backend or shared cache to keep in step.
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "colvenna-bi.selector" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "colvenna-bi.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        # The image's superset user.
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        # The pod's TLS key and self-signed certificate (the load balancer does not check it).
+        - name: tls
+          image: "{{ required "image.repository" .Values.image.repository }}@{{ required "image.digest" .Values.image.digest }}"
+          command: ["python", "-m", "colvenna_bi.tls", "/tls"]
+          securityContext:
+            {{- include "colvenna-bi.securityContext" . | nindent 12 }}
+          volumeMounts:
+            - {name: tls, mountPath: /tls}
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 128Mi}
+      containers:
+        - name: superset
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          imagePullPolicy: IfNotPresent
+          command: ["gunicorn"]
+          args:
+            - --bind=0.0.0.0:8443
+            - --certfile=/tls/tls.crt
+            - --keyfile=/tls/tls.key
+            - --workers=1
+            - --worker-class=gthread
+            - --threads=20
+            - --timeout=120
+            # The load balancer's claims and the access token are long headers.
+            - --limit-request-field_size=0
+            - --limit-request-line=0
+            - --access-logfile=-
+            - --error-logfile=-
+            - superset.app:create_app()
+          ports:
+            - name: https
+              containerPort: 8443
+          env:
+            {{- include "colvenna-bi.env" . | nindent 12 }}
+          readinessProbe:
+            httpGet: {scheme: HTTPS, path: /health, port: https}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {scheme: HTTPS, path: /health, port: https}
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- include "colvenna-bi.securityContext" . | nindent 12 }}
+          volumeMounts:
+            - {name: tls, mountPath: /tls, readOnly: true}
+            - {name: doris-users, mountPath: /etc/colvenna-bi/doris-users, readOnly: true}
+            - {name: rds-ca, mountPath: /etc/colvenna-bi/rds-ca, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            - {name: home, mountPath: /app/superset_home}
+        # The dashboards' Superset databases and roles, kept in step with the published users.
+        - name: sync
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          command: ["python", "-m", "colvenna_bi.sync"]
+          env:
+            {{- include "colvenna-bi.env" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.syncResources | nindent 12 }}
+          securityContext:
+            {{- include "colvenna-bi.securityContext" . | nindent 12 }}
+          volumeMounts:
+            - {name: doris-users, mountPath: /etc/colvenna-bi/doris-users, readOnly: true}
+            - {name: rds-ca, mountPath: /etc/colvenna-bi/rds-ca, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            - {name: home, mountPath: /app/superset_home}
+      volumes:
+        - name: tls
+          emptyDir: {medium: Memory}
+        # Not by subPath: a Secret mounted whole follows its changes.
+        - name: doris-users
+          secret:
+            secretName: {{ .Values.secrets.dorisUsers }}
+        - name: rds-ca
+          configMap:
+            name: {{ .Values.metadataCaConfigMap }}
+        - name: tmp
+          emptyDir: {}
+        - name: home
+          emptyDir: {}

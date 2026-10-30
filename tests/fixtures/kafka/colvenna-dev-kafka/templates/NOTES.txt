@@ -1,0 +1,13 @@
+Test Kafka {{ .Release.Name }} (development and testing only) in {{ .Release.Namespace }}.
+Bootstrap: {{ .Release.Name }}-kafka-bootstrap.{{ .Release.Namespace }}.svc:9093 (TLS, SCRAM-SHA-512),
+from namespaces labelled {{ .Values.clientNamespaceLabel }}=true.
+Cluster CA: Secret {{ .Release.Name }}-cluster-ca-cert; user passwords: Secrets named after the users.
+{{- if eq .Values.storage.type "ephemeral" }}
+Storage is ephemeral: records are lost whenever the pod goes, and `helm uninstall` leaves nothing.
+{{- else if .Values.storage.deleteClaim }}
+deleteClaim=true: `helm uninstall` deletes the volume claim and every record with it.
+{{- else }}
+deleteClaim=false: `helm uninstall` keeps the volume claim (label strimzi.io/cluster={{ .Release.Name }})
+and its records. tests/fixtures/kafka/dev-kafka.sh records the cluster id beside it on uninstall and
+reinstalls onto it; `dev-kafka.sh purge` deletes the data.
+{{- end }}

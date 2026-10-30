@@ -1,0 +1,24 @@
+# Where the old name (#271) may still be, and why: <path glob> TAB <text on the line, or *> TAB <reason>.
+# Only the naming history, the records of the candidates made before the rename, rc.3's record and
+# this check itself, each as narrow as it can be. Anything else is renamed, not added here.
+docs/history/*	*	历史记录，保持当时的名字（#271）
+release/v1.0.0-rc.2/*	*	改名之前的候选 v1.0.0-rc.2 的不可变记录
+docs/uat/reports/v1.0.0-rc.2/*	*	改名之前的候选 v1.0.0-rc.2 的 UAT 报告
+docs/performance/v1.0.0-rc.2.md	*	改名之前的候选 v1.0.0-rc.2 的性能文档
+docs/uat/report.md	*	2026-10-20 的 UAT 执行报告，写于改名之前
+docs/uat/reports/v1.0.0-rc.3/report.md	cove-lake-release/doris	候选 v1.0.0-rc.3 的记录：#271 拆除时删除的旧仓库
+docs/uat/reports/v1.0.0-rc.3/report.md	改名（`cove` → `colvenna`	候选 v1.0.0-rc.3 的记录：改名的映射
+release/v1.0.0-rc.3/security.md	cove-lake-release/doris	候选 v1.0.0-rc.3 的记录：#271 拆除时删除的旧仓库
+README.md	The product was called Cove Lake	改名的沿革
+assets/brand/README.md	产品原名 Cove Lake	改名的沿革
+docs/manual/install.md	由 Cove Lake 改为 Colvenna Lake	改名的沿革
+release/trademarks.md	2026-10-24 以前叫 “Cove Lake”	改名的沿革（第 1 节指向第 7 节）
+release/trademarks.md	## 7. 产品名：从 Cove Lake 到 Colvenna Lake	改名的沿革（第 7 节的标题）
+release/trademarks.md	- **改名。**	改名的沿革（第 7 节）
+release/trademarks.md	- **放弃 Cove 的原因。**	放弃旧名的原因：在先商标（第 7 节）
+release/trademarks.md	- **本仓库此前的初步检索**	放弃旧名的原因：初步检索（第 7 节）
+release/trademarks.md	**技术标识也改名。**	技术标识改名的映射（第 7 节）
+docs/uat/cases.md	`cove-m3-bi` 现为	历史验收报告里的旧命名空间，与它现在的名字对照
+deploy/scripts/rename/old_name.py	*	这个检查自己的说明与定义
+deploy/scripts/rename/test_old_name.py	*	这个检查的测试
+deploy/scripts/rename/exceptions.tsv	*	这份例外清单本身

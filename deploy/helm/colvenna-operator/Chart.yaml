@@ -1,0 +1,6 @@
+apiVersion: v2
+name: colvenna-operator
+description: Keeps declared lake sources, tables, tasks, quality rules and waivers, erasures, dashboards and Iceberg publications converged with what they declare.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

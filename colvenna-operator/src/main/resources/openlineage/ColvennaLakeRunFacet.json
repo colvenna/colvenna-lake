@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/colvenna/colvenna-lake/blob/main/colvenna-operator/src/main/resources/openlineage/ColvennaLakeRunFacet.json",
+  "$defs": {
+    "ColvennaLakeRunFacet": {
+      "allOf": [
+        {
+          "$ref": "https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/RunFacet"
+        },
+        {
+          "type": "object",
+          "description": "What ran the run in Colvenna Lake, and how its datasets are known.",
+          "properties": {
+            "provenance": {
+              "description": "planner: the tables the planner found the query reads; declared: the tables the declaration names, which its catalog identity alone may read or write.",
+              "type": "string",
+              "enum": ["planner", "declared"]
+            },
+            "kind": {"description": "The declaration's kind.", "type": "string"},
+            "name": {"description": "The declaration's name.", "type": "string"},
+            "uid": {"description": "The declaration's uid.", "type": "string"},
+            "generation": {"description": "The declaration's generation when reported.", "type": "string"},
+            "deployment": {"description": "The FlinkDeployment that runs the job.", "type": "string"},
+            "specHash": {"description": "The deployment's spec hash (colvenna-lake.io/spec-hash): the version the job runs.", "type": "string"},
+            "flinkJobId": {"description": "The Flink job id.", "type": "string"},
+            "image": {"description": "The job's image.", "type": "string"},
+            "attempt": {"description": "A backfill's attempt.", "type": "string"},
+            "kubernetesJob": {"description": "The Kubernetes Job a backfill's attempt runs as.", "type": "string"},
+            "lakeTable": {"description": "The LakeTable whose query a backfill runs.", "type": "string"},
+            "query": {"description": "A dashboard's query.", "type": "string"},
+            "serve": {"description": "How the query is served: external, materialized or internal.", "type": "string"},
+            "applied": {"description": "The hash of the query as applied to Doris.", "type": "string"}
+          },
+          "required": ["provenance", "kind", "name", "uid"],
+          "additionalProperties": true
+        }
+      ],
+      "type": "object"
+    }
+  },
+  "type": "object",
+  "properties": {
+    "colvennaLake": {
+      "$ref": "#/$defs/ColvennaLakeRunFacet"
+    }
+  }
+}

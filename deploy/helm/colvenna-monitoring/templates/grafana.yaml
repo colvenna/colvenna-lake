@@ -1,0 +1,85 @@
+# Grafana with Colvenna Lake's panels (files/dashboard.json) over Prometheus. Sign-in required (the
+# admin password is in a Secret the installer makes), no anonymous access, no sign-up; in-cluster
+# only, reached through an authenticated kubectl port-forward.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-grafana
+  labels:
+    {{- include "colvenna-monitoring.labels" . | nindent 4 }}
+    app.kubernetes.io/component: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "colvenna-monitoring.selector" (list . "grafana") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "colvenna-monitoring.labels" . | nindent 8 }}
+        app.kubernetes.io/component: grafana
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/grafana-config.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 472, runAsGroup: 0, fsGroup: 472, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: grafana
+          image: {{ required "images.grafana" .Values.images.grafana }}
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: admin
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ .Values.grafana.adminSecret }}, key: admin-password}}
+            - {name: GF_AUTH_ANONYMOUS_ENABLED, value: "false"}
+            - {name: GF_USERS_ALLOW_SIGN_UP, value: "false"}
+            - {name: GF_AUTH_DISABLE_LOGIN_FORM, value: "false"}
+            - {name: GF_ANALYTICS_REPORTING_ENABLED, value: "false"}
+            - {name: GF_ANALYTICS_CHECK_FOR_UPDATES, value: "false"}
+            - {name: GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES, value: "false"}
+            - {name: GF_PLUGINS_PREINSTALL_DISABLED, value: "true"}
+            - {name: GF_PATHS_PROVISIONING, value: /etc/grafana/provisioning}
+          ports: [{name: http, containerPort: 3000}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          readinessProbe: {httpGet: {path: /api/health, port: http}, periodSeconds: 10}
+          resources: {{- toYaml .Values.grafana.resources | nindent 12 }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/grafana/provisioning/datasources/datasources.yaml, subPath: datasources.yaml}
+            - {name: config, mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml, subPath: dashboards.yaml}
+            - {name: config, mountPath: /var/lib/grafana/dashboards/colvenna-lake.json, subPath: colvenna-lake.json}
+            - {name: data, mountPath: /var/lib/grafana}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          configMap: {name: {{ .Release.Name }}-grafana}
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-grafana
+  labels:
+    {{- include "colvenna-monitoring.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "colvenna-monitoring.selector" (list . "grafana") | nindent 4 }}
+  ports: [{name: http, port: 3000, targetPort: http}]
+---
+# No pod connects to Grafana: people reach it through kubectl port-forward, which the API server
+# authenticates and authorizes.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-grafana
+  labels:
+    {{- include "colvenna-monitoring.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "colvenna-monitoring.selector" (list . "grafana") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress: []

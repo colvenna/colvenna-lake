@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "colvenna-console.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "colvenna-console.selector" . | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "colvenna-console.labels" . | nindent 8 }}
+        # Prometheus admits these pods in a namespace labelled the same (colvenna-monitoring).
+        {{ .Values.pipeline.prometheusReaderLabel }}: "true"
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      # Drained from the target group before the pod stops (the target group waits 30 s).
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        # The confirmations' key is readable by the pod's group.
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "colvenna-console.selector" . | nindent 14 }}
+          matchLabelKeys: [pod-template-hash]
+      containers:
+        - name: colvenna-console
+          image: "{{ required "image.repository" .Values.image.repository }}@{{ required "image.digest" .Values.image.digest }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: https
+              containerPort: 8443
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: AWS_REGION
+              value: {{ required "region" .Values.region | quote }}
+            - name: COLVENNA_PUBLIC_URL
+              value: {{ required "entry.publicUrl" .Values.entry.publicUrl | quote }}
+            - name: COLVENNA_SIGN_IN_URL
+              value: {{ required "entry.signInUrl" .Values.entry.signInUrl | quote }}
+            - name: COLVENNA_USER_POOL_ID
+              value: {{ required "entry.userPoolId" .Values.entry.userPoolId | quote }}
+            - name: COLVENNA_CLIENT_ID
+              value: {{ required "entry.clientId" .Values.entry.clientId | quote }}
+            - name: COLVENNA_LOAD_BALANCER_ARN
+              value: {{ required "entry.loadBalancerArn" .Values.entry.loadBalancerArn | quote }}
+            - name: COLVENNA_SESSION_COOKIE
+              value: {{ required "entry.sessionCookie" .Values.entry.sessionCookie | quote }}
+            - name: COLVENNA_ROLE_GROUPS
+              {{- if not .Values.entry.roleGroups }}{{ fail "entry.roleGroups is required" }}{{ end }}
+              value: {{ .Values.entry.roleGroups | toJson | quote }}
+            - name: COLVENNA_AUDIT_LOG_GROUP
+              value: {{ required "auditLogGroup" .Values.auditLogGroup | quote }}
+            - name: COLVENNA_NAMESPACES
+              value: {{ join "," .Values.pipeline.namespaces | quote }}
+            - name: COLVENNA_PROMETHEUS_URL
+              value: {{ .Values.pipeline.prometheusUrl | quote }}
+            - name: COLVENNA_CONFIRM_KEY_FILE
+              value: /var/run/colvenna-console/confirm/key
+          readinessProbe:
+            httpGet:
+              scheme: HTTPS
+              path: /healthz
+              port: https
+            periodSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              scheme: HTTPS
+              path: /healthz
+              port: https
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+          # The target group keeps sending for a few seconds after deregistration starts.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: confirm
+              mountPath: /var/run/colvenna-console/confirm
+              readOnly: true
+      volumes:
+        # The key that signs the confirmations of irreversible operations, the same in
+        # every pod: either may take the second step.
+        - name: confirm
+          secret:
+            secretName: {{ required "operations.confirmKeySecret" .Values.operations.confirmKeySecret }}
+            defaultMode: 0440

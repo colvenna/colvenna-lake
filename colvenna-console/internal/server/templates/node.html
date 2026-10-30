@@ -1,0 +1,50 @@
+{{define "node"}}{{template "head" .}}
+<p><a href="/pipeline">← 流水线</a></p>
+<h1>{{kindName .Node.Kind}} {{label .Node}}</h1>
+<section>
+  <dl>
+    {{if .Node.Phase}}<dt>状态</dt><dd>{{.Node.Phase}}{{if .Node.Message}}：{{.Node.Message}}{{end}}</dd>{{end}}
+    <dt>判断</dt><dd>{{if .Node.Problem}}出问题：{{range $i, $w := .Node.Why}}{{if $i}}、{{end}}{{$w}}{{end}}{{else if .Node.Affected}}受上游影响{{range .Node.Why}}；{{.}}{{end}}{{else}}正常{{end}}</dd>
+    {{if .AffectedBy}}<dt>受谁影响</dt><dd>{{range $i, $n := .AffectedBy}}{{if $i}}、{{end}}<a href="/pipeline/node?id={{$n.ID}}">{{kindName $n.Kind}} {{label $n}}</a>{{end}}</dd>{{end}}
+    {{range .Node.Jobs}}<dt>作业</dt><dd>{{.Deployment}}{{with .State}} · {{.}}{{end}}{{with .Lifecycle}} · {{.}}{{end}}{{with .JobID}} · Flink job {{.}}{{end}}</dd>{{end}}
+    <dt>读于</dt><dd>{{.At.Format "2006-01-02 15:04:05 UTC"}}</dd>
+  </dl>
+</section>
+{{if .Node.Measures}}
+<section>
+  <h2>指标</h2>
+  <dl>{{range $k, $v := .Node.Measures}}<dt>{{$k}}</dt><dd>{{measure $k $v}}</dd>{{end}}</dl>
+</section>
+{{end}}
+{{if .Node.Alerts}}
+<section>
+  <h2>告警</h2>
+  <ul>{{range .Node.Alerts}}<li>{{.Name}}（{{.State}}，自 {{.Since.Format "15:04:05"}}）{{if .Summary}}：{{.Summary}}{{end}}</li>{{end}}</ul>
+</section>
+{{end}}
+{{if .Node.Conditions}}
+<section>
+  <h2>条件</h2>
+  <table><tr><th>类型</th><th>状态</th><th>原因</th><th>说明</th><th>自</th></tr>
+  {{range .Node.Conditions}}<tr><td>{{.Type}}</td><td>{{.Status}}</td><td>{{.Reason}}</td><td>{{.Message}}</td><td>{{.Since}}</td></tr>{{end}}
+  </table>
+</section>
+{{end}}
+{{if .Node.Upstream}}
+<section><h2>上游</h2><table><tr><th>表</th><th>未读快照</th><th>滞后</th></tr>
+{{range .Node.Upstream}}<tr><td>{{.Table}}</td><td>{{count .LagSnapshots}}</td><td>{{seconds .LagSeconds}}</td></tr>{{end}}</table></section>
+{{end}}
+{{if .Node.Queries}}
+<section><h2>查询</h2><table><tr><th>名字</th><th>服务方式</th><th>上次刷新</th><th>距今</th><th>说明</th></tr>
+{{range .Node.Queries}}<tr><td>{{.Name}}</td><td>{{.Serve}}</td><td>{{.RefreshedAt}}</td><td>{{seconds .RefreshAgeSeconds}}</td><td>{{.Message}}</td></tr>{{end}}</table></section>
+{{end}}
+{{if .Node.Tasks}}
+<section><h2>任务</h2><table><tr><th>名字</th><th>类型</th><th>阶段</th><th>开始</th></tr>
+{{range .Node.Tasks}}<tr><td>{{.Name}}</td><td>{{.Type}}</td><td>{{.Phase}}</td><td>{{.StartedAt}}</td></tr>{{end}}</table></section>
+{{end}}
+<section>
+  <h2>上下游</h2>
+  <p>上游：{{range $i, $n := .From}}{{if $i}}、{{end}}<a href="/pipeline/node?id={{$n.ID}}">{{label $n}}</a>{{else}}无{{end}}</p>
+  <p>下游：{{range $i, $n := .To}}{{if $i}}、{{end}}<a href="/pipeline/node?id={{$n.ID}}">{{label $n}}</a>{{else}}无{{end}}</p>
+</section>
+{{template "foot" .}}{{end}}

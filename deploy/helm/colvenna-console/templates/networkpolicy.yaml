@@ -1,0 +1,22 @@
+# No pod connects to the console: only the load balancer, from the public subnets it sits in.
+# The kubelet's probes come from the node and are not subject to the policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "colvenna-console.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "colvenna-console.selector" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- range (required "entry.subnetCidrs" .Values.entry.subnetCidrs) }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8443

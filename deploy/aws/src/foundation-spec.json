@@ -1,0 +1,5 @@
+{
+  "kubernetesVersion": "1.36",
+  "writeInstanceType": "t3.xlarge",
+  "queryInstanceType": "r6i.xlarge"
+}

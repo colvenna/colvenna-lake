@@ -1,0 +1,19 @@
+{{define "pipeline"}}{{template "head" .}}
+<h1>流水线</h1>
+<p class="note">读于 {{.Pipeline.At.Format "2006-01-02 15:04:05 UTC"}}：声明的状态取自 Kubernetes，指标与告警取自 Prometheus；数据从左向右流。红色是出问题的环节，琥珀色是受它影响的下游。</p>
+{{if .Problems}}
+<section class="problems">
+  <h2>出问题的环节</h2>
+  <ul>
+  {{range .Problems}}<li><a href="/pipeline/node?id={{.ID}}">{{kindName .Kind}} {{label .}}</a>：{{range $i, $w := .Why}}{{if $i}}、{{end}}{{$w}}{{end}}</li>{{end}}
+  </ul>
+</section>
+{{end}}
+<section class="drawing">{{.Drawing}}</section>
+{{if .Pipeline.Alerts}}
+<section>
+  <h2>不属于某一环节的告警</h2>
+  <ul>{{range .Pipeline.Alerts}}<li>{{.Name}}（{{.State}}）{{if .Summary}}：{{.Summary}}{{end}}</li>{{end}}</ul>
+</section>
+{{end}}
+{{template "foot" .}}{{end}}

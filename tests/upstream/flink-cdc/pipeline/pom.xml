@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.colvenna.lake</groupId>
+  <artifactId>cdc37-pipeline</artifactId>
+  <version>0.1.0</version>
+  <name>cdc37-pipeline</name>
+  <description>Flink CDC 3.7's YAML pipeline (MySQL source, Paimon sink) against
+    colvenna-catalog's REST API. Run by tests/upstream/flink-cdc/run-pipeline.sh, not by CI: it needs Docker and
+    a port-forward to colvenna-catalog.</description>
+
+  <properties>
+    <maven.compiler.release>11</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <cdc.version>3.7.0-1.20</cdc.version>
+    <flink.version>1.20.4</flink.version>
+    <truststore>none</truststore>
+  </properties>
+
+  <dependencies>
+    <dependency><groupId>org.apache.flink</groupId><artifactId>flink-cdc-composer</artifactId><version>${cdc.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.flink</groupId><artifactId>flink-cdc-cli</artifactId><version>${cdc.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.flink</groupId><artifactId>flink-cdc-pipeline-connector-mysql</artifactId><version>${cdc.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.flink</groupId><artifactId>flink-cdc-pipeline-connector-paimon</artifactId><version>${cdc.version}</version><scope>test</scope></dependency>
+    <!-- Paimon 2.0's RESTCatalog wants a Hadoop configuration from its context: without Hadoop on the
+         classpath the sink's committer cannot open the catalog. -->
+    <dependency><groupId>org.apache.paimon</groupId><artifactId>paimon-hadoop-uber</artifactId><version>2.0.0</version><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.paimon</groupId><artifactId>paimon-s3</artifactId><version>2.0.0</version><scope>test</scope></dependency>
+    <dependency><groupId>mysql</groupId><artifactId>mysql-connector-java</artifactId><version>8.0.27</version><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.flink</groupId><artifactId>flink-streaming-java</artifactId><version>${flink.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.flink</groupId><artifactId>flink-clients</artifactId><version>${flink.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.flink</groupId><artifactId>flink-connector-base</artifactId><version>${flink.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.flink</groupId><artifactId>flink-table-runtime</artifactId><version>${flink.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.11.4</version><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-slf4j-impl</artifactId><version>2.24.3</version><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-core</artifactId><version>2.24.3</version><scope>test</scope></dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.0</version>
+      </plugin>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>3.10.3</version>
+        <configuration>
+          <java><googleJavaFormat><version>1.36.1</version><style>AOSP</style></googleJavaFormat><removeUnusedImports/></java>
+        </configuration>
+        <executions>
+          <execution><phase>validate</phase><goals><goal>check</goal></goals></execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+        <configuration>
+          <argLine>--add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/java.math=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED -Djavax.net.ssl.trustStore=${truststore} -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12</argLine>
+          <systemPropertyVariables>
+            <mysql.port>${mysql.port}</mysql.port>
+            <run>${run}</run>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

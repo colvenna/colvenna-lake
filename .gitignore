@@ -1,0 +1,29 @@
+# 建在仓库根目录下的 git worktree（.worktrees/issue-<编号>-<简述>）
+/.worktrees/
+
+# 个人本地目录，不入库
+/_my/
+
+# 操作系统与编辑器
+.DS_Store
+.idea/
+*.swp
+
+# 本地依赖、CDK 产物、构建产物，以及各环境的本地状态与证据（deploy/.state/<env>/）
+node_modules/
+cdk.out/
+*.tsbuildinfo
+__pycache__/
+.env
+.env.*
+!*.example
+evidence/
+.tools/
+/deploy/.state/
+target/
+/colvenna-cli/dist/
+/tests/acceptance/catalog/spark/image/jars/
+/tests/fixtures/readers/spark/jars/
+
+# ASH scan output (.ash/.ash.yaml is the scan configuration)
+/.ash/ash_output/

@@ -1,0 +1,138 @@
+# The console reads the pipeline: the declarations and their Flink deployments in the managed
+# namespaces, get and list, nothing it could change or that holds a secret.
+{{- if not .Values.pipeline.namespaces }}{{ fail "pipeline.namespaces: the namespaces the console shows" }}{{ end }}
+{{- range .Values.pipeline.namespaces }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $.Release.Name }}-pipeline-reader
+  namespace: {{ . }}
+  labels:
+    {{- include "colvenna-console.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [colvenna-lake.io]
+    resources: [lakesources, laketables, lakedashboards, laketasks]
+    verbs: [get, list]
+  - apiGroups: [flink.apache.org]
+    resources: [flinkdeployments]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $.Release.Name }}-pipeline-reader
+  namespace: {{ . }}
+  labels:
+    {{- include "colvenna-console.labels" $ | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $.Values.serviceAccount.name }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ $.Release.Name }}-pipeline-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}
+# The console's controlled operations act as two users of its own, colvenna-console:operator and
+# colvenna-console:admin, with the signed-in person as user extras: the console may impersonate those
+# two users and those extras, nobody else. The API server's RBAC below, its admission and the
+# operator judge what they ask, and the cluster's audit names the person.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-act-as
+  labels:
+    {{- include "colvenna-console.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [users]
+    verbs: [impersonate]
+    resourceNames: [colvenna-console:operator, colvenna-console:admin]
+  - apiGroups: [authentication.k8s.io]
+    resources: [userextras/colvenna-lake.io/person, userextras/colvenna-lake.io/sub]
+    verbs: [impersonate]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-act-as
+  labels:
+    {{- include "colvenna-console.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.name }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}-act-as
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- range .Values.pipeline.namespaces }}
+# What operators may do here: declare and change declarations, suspend and resume, submit tasks.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $.Release.Name }}-operate
+  namespace: {{ . }}
+  labels:
+    {{- include "colvenna-console.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [colvenna-lake.io]
+    resources: [lakesources, laketables, lakedashboards, lakequalities, lakeicebergpublications, laketasks]
+    verbs: [get, list, create, patch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $.Release.Name }}-operate
+  namespace: {{ . }}
+  labels:
+    {{- include "colvenna-console.labels" $ | nindent 4 }}
+subjects:
+  - {kind: User, name: "colvenna-console:operator", apiGroup: rbac.authorization.k8s.io}
+  - {kind: User, name: "colvenna-console:admin", apiGroup: rbac.authorization.k8s.io}
+roleRef:
+  kind: Role
+  name: {{ $.Release.Name }}-operate
+  apiGroup: rbac.authorization.k8s.io
+---
+# What only administrators may: delete declarations, erase a data subject (the erasure and its
+# Secret, which the console writes and never reads), waive failed checks.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $.Release.Name }}-administer
+  namespace: {{ . }}
+  labels:
+    {{- include "colvenna-console.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [colvenna-lake.io]
+    resources: [lakesources, laketables, lakedashboards, lakequalities, lakeicebergpublications, laketasks, lakeerasures, lakewaivers]
+    verbs: [delete]
+  - apiGroups: [colvenna-lake.io]
+    resources: [lakeerasures]
+    verbs: [get, list, create]
+  # A waiver is server-side applied, as `colvenna waive` does: patch, and create for a new one.
+  - apiGroups: [colvenna-lake.io]
+    resources: [lakewaivers]
+    verbs: [get, list, create, patch]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $.Release.Name }}-administer
+  namespace: {{ . }}
+  labels:
+    {{- include "colvenna-console.labels" $ | nindent 4 }}
+subjects:
+  - {kind: User, name: "colvenna-console:admin", apiGroup: rbac.authorization.k8s.io}
+roleRef:
+  kind: Role
+  name: {{ $.Release.Name }}-administer
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- end }}

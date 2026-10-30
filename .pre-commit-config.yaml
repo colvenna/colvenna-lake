@@ -1,0 +1,63 @@
+# 本地：pre-commit install 后每次提交自动检查；全量检查用 pre-commit run --all-files。
+# CI 以同一份配置运行（.github/workflows/lint.yml）。
+# pre-commit install 同时装上 commit-msg 钩子：提交说明也不能有部署值（#248）。
+default_install_hook_types: [pre-commit, commit-msg]
+# Only the hooks that say so run on a commit message (the redaction check); the rest on files.
+default_stages: [pre-commit, pre-push, manual]
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        # Helm templates (and the rules file the chart renders) are Go templates, not YAML, until
+        # rendered; CI lints them with helm lint.
+        exclude: ^(deploy/helm/[^/]+|tests/fixtures/kafka/colvenna-dev-kafka)/(templates/|files/rules.yaml$)
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+        # The README's overview video: the GIF (960 px, 12 fps, 9.8 MB) and the narrated MP4 (7.7 MB).
+        exclude: ^assets/video/colvenna-lake-promo\.(gif|mp4)$
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.3
+    hooks:
+      - id: markdownlint-cli2
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
+  # The maintainers' deployment values stay out of the repository (#248). What to look for comes from
+  # the local settings (deploy/.state/) and from deploy/scripts/redaction/known-values.sha256; see
+  # deploy/scripts/redaction/redaction.py.
+  - repo: local
+    hooks:
+      - id: deployment-values
+        name: no deployment values
+        entry: python3 deploy/scripts/redaction/redaction.py
+        language: system
+        types: [text]
+        stages: [pre-commit, pre-push, manual]
+        # The Doris configuration files are the image's own, with its example addresses.
+        exclude: ^deploy/scripts/doris/(be|fe)-default\.conf$
+      - id: deployment-values-in-commit-message
+        name: no deployment values in the commit message
+        entry: python3 deploy/scripts/redaction/redaction.py
+        language: system
+        stages: [commit-msg]
+
+  # The project's old name stays gone (#271) but where deploy/scripts/rename/exceptions.tsv allows it,
+  # with its reason; see deploy/scripts/rename/old_name.py.
+  - repo: local
+    hooks:
+      - id: old-name
+        name: no old name
+        entry: python3 deploy/scripts/rename/old_name.py
+        language: system
+        stages: [pre-commit, pre-push, manual]

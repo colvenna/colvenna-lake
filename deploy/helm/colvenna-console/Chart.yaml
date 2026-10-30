@@ -1,0 +1,6 @@
+apiVersion: v2
+name: colvenna-console
+description: Colvenna Lake's web console, behind the authenticated public entry.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

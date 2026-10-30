@@ -1,0 +1,6 @@
+# Added to Apache Superset 6.1.0's image (which pins the rest): the drivers of the metadata database
+# and of Doris, and the AWS SDK for signing users out at the user pool.
+psycopg2-binary==2.9.9
+pydoris==1.2.0
+mysqlclient==2.2.7
+boto3==1.43.114

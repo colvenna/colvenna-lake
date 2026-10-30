@@ -1,0 +1,13 @@
+# The AWS Load Balancer Controller keeps the pods registered in the stack's target group.
+apiVersion: elbv2.k8s.aws/v1beta1
+kind: TargetGroupBinding
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "colvenna-console.labels" . | nindent 4 }}
+spec:
+  serviceRef:
+    name: {{ .Release.Name }}
+    port: 8443
+  targetGroupARN: {{ required "entry.targetGroupArn" .Values.entry.targetGroupArn | quote }}
+  targetType: ip

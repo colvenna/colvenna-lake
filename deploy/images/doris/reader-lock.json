@@ -1,0 +1,117 @@
+{
+  "doris_commit": "ad35a140c7fd0b842f18c23300bac581f7d04326",
+  "sdk": [
+    {
+      "name": "paimon-bundle-2.0.0.jar",
+      "url": "https://repo.maven.apache.org/maven2/org/apache/paimon/paimon-bundle/2.0.0/paimon-bundle-2.0.0.jar",
+      "sha256": "7a755b7b11b500147cd113802565d19d0f84947b6444bc8dabad85005c930561"
+    },
+    {
+      "name": "paimon-arrow-2.0.0.jar",
+      "url": "https://repo.maven.apache.org/maven2/org/apache/paimon/paimon-arrow/2.0.0/paimon-arrow-2.0.0.jar",
+      "sha256": "c99f69f45c7f1e24332aacf1dac7d0c624910c65b7a7947f65ae209d03867840"
+    },
+    {
+      "name": "paimon-s3-2.0.0.jar",
+      "url": "https://repo.maven.apache.org/maven2/org/apache/paimon/paimon-s3/2.0.0/paimon-s3-2.0.0.jar",
+      "sha256": "a5f79d5c5d60e14e6da7366f3f34f65a489495644e44a205291611af56ce52f0"
+    }
+  ],
+  "doris_sources": [
+    {
+      "name": "DorisIOManager.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/DorisIOManager.java",
+      "git_blob_sha": "7f9cba655175e18cf1ddf1a53231ec7958532422",
+      "sha256": "54e1799ccd7db7a8db489a3abab182e0c2381ab3d7c2151ed6879d08716ac5aa"
+    },
+    {
+      "name": "DorisMemorySegmentPool.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/DorisMemorySegmentPool.java",
+      "git_blob_sha": "06ab99823b09fbd4355ac8cd807883b6038b536e",
+      "sha256": "f0a3464f969e3e05c8063a197bdcd8ccec7747399dd76bdf5ad936f9a643a568"
+    },
+    {
+      "name": "GlobalIndexAssigner.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/GlobalIndexAssigner.java",
+      "git_blob_sha": "16d33c6e4678ceda6445c56049c5941687723128",
+      "sha256": "f34d6fa9ec85d45bfdc31f38bb910ea1847eb299e101871bb239a5b14080cfd0"
+    },
+    {
+      "name": "PaimonArrowBatchAdapter.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonArrowBatchAdapter.java",
+      "git_blob_sha": "918f47890737cf31a2ff865fddb39ef34ab2bf95",
+      "sha256": "4c070f7889f12d12be60c1973586ae0ba6a3c899a92b20be7fd846e0bf83487d"
+    },
+    {
+      "name": "PaimonColumnValue.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonColumnValue.java",
+      "git_blob_sha": "f8efad58e80995aeddfc98f5b2e841aba93b913b",
+      "sha256": "b9e86ade8c8693c4f52de3fc0ce2ffacfa0cdeca0b255ad473b81df86205ab03"
+    },
+    {
+      "name": "PaimonCommitCodec.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonCommitCodec.java",
+      "git_blob_sha": "16bbe6eb8bf748b9b98b4cedb030a20ea038f755",
+      "sha256": "d1978fe9a54d11d92b84424a43cdc0dc1fd8849db6b0ada5c6a56bdf1253fa3a"
+    },
+    {
+      "name": "PaimonJdbcDriverUtils.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonJdbcDriverUtils.java",
+      "git_blob_sha": "09d7818dc71587b85d445467c36e672c9f96b011",
+      "sha256": "bf5e6aceb301e4494903c32c1e0a5ec232b11215657500148356b6971baa7fc4"
+    },
+    {
+      "name": "PaimonJniScanner.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonJniScanner.java",
+      "git_blob_sha": "9169e4ac8d2321a77777457115e6d1c34ec1b0e4",
+      "sha256": "35fb0a234232ea951f4afdf10bf06643e0e5225e1053aa4d0780877a27154ca3"
+    },
+    {
+      "name": "PaimonJniWriter.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonJniWriter.java",
+      "git_blob_sha": "cf2536b7a5f0c047ae25fe9a402ce6ab43079e64",
+      "sha256": "5bf990aaebd14db43a515c9ea910fa08c4f52ced70f65b299fa999f71f154e7c"
+    },
+    {
+      "name": "PaimonReadTypeProjection.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonReadTypeProjection.java",
+      "git_blob_sha": "6304bfdabbe6622919e2a238f1a5341f1bca604a",
+      "sha256": "a1b41300607650a5396d67ca8b31b8597a4143cb78f5f8f211e849ba0eb18f5c"
+    },
+    {
+      "name": "PaimonTableCache.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonTableCache.java",
+      "git_blob_sha": "e401f7afe02307208ac1a0f0e04bf5fef9f8bd69",
+      "sha256": "72eba8be3debaac4afd7f6712514413134b537bb3bc07de73cf612c41af1cde9"
+    },
+    {
+      "name": "PaimonTypeUtils.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonTypeUtils.java",
+      "git_blob_sha": "be457571f0be871bacd1679ace93fbc4faa69b91",
+      "sha256": "8d30c1b75040fed033384a2253ae642b7a87312a50c367d730a47a74f2f77c2b"
+    },
+    {
+      "name": "PaimonUtils.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonUtils.java",
+      "git_blob_sha": "d1d6c2f9bdb5790d46fec74ab1dcfb91d4e6dc12",
+      "sha256": "3b0da29f212793650291cffc38c74fa0d25f39901322471748c9d30b956a6a2f"
+    },
+    {
+      "name": "PaimonVariantProjection.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonVariantProjection.java",
+      "git_blob_sha": "172b0f3bb463c48b142d8a0cbbc886f55146c023",
+      "sha256": "012880c5d5f0d51b7a76336868dea9cb2f4640a64a14891551b7a08155b51f60"
+    },
+    {
+      "name": "PaimonWriteSchema.java",
+      "url": "https://raw.githubusercontent.com/apache/doris/ad35a140c7fd0b842f18c23300bac581f7d04326/fe/be-java-extensions/paimon-connector/src/main/java/org/apache/doris/paimon/PaimonWriteSchema.java",
+      "git_blob_sha": "72ebd449ecc1d52db27e083fc676284b25a253ef",
+      "sha256": "290bc4396d2680fac326bd16e304fb5d29ec020694b8d6347174eac89a472492"
+    }
+  ],
+  "stock_be_sha256": {
+    "connector": "7e55edb47dd7f1c618a015f7755f4a628c052d01ee3e122af404a5efff1988ce",
+    "preload": "fb436621d9933e9adf8bf8318d1ad01024c44537f3267601b8c84b9ec3783e39",
+    "udf": "7e14689873caf420a53c255b7e5a5da3ac5d4eb6a9d30fcbadaa1b68c07a0d8e"
+  }
+}

@@ -1,0 +1,29 @@
+# Prometheus's configuration and Colvenna Lake's alert rules (files/rules.yaml, with the latency targets
+# of values.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-prometheus
+  labels:
+    {{- include "colvenna-monitoring.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: {{ .Values.prometheus.scrapeInterval }}
+      evaluation_interval: {{ .Values.prometheus.scrapeInterval }}
+    rule_files: [/etc/prometheus/rules/rules.yaml]
+    scrape_configs:
+    {{- range $name, $t := .Values.targets }}
+      - job_name: colvenna-{{ $name }}
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces: {names: [{{ $t.namespace }}]}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+            regex: {{ $t.service }};{{ $t.port }}
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+    {{- end }}
+  rules.yaml: |
+{{ tpl (.Files.Get "files/rules.yaml") . | indent 4 }}

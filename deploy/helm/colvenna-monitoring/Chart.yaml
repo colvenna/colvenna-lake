@@ -1,0 +1,6 @@
+apiVersion: v2
+name: colvenna-monitoring
+description: Prometheus with Colvenna Lake's alert rules and Grafana with its panels, inside the cluster only.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

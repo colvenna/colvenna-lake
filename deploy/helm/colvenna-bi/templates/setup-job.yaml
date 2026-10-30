@@ -1,0 +1,55 @@
+# Superset's schema and roles, before the web process starts on a new image: `superset db upgrade`,
+# `superset init`, then the ColvennaBI role (colvenna_bi.setup). It needs no one's Doris identity.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-setup
+  labels:
+    {{- include "colvenna-bi.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 1800
+  template:
+    metadata:
+      labels:
+        {{- include "colvenna-bi.labels" . | nindent 8 }}
+        app.kubernetes.io/component: setup
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: setup
+          image: "{{ required "image.repository" .Values.image.repository }}@{{ required "image.digest" .Values.image.digest }}"
+          command: ["sh", "-ec", "superset db upgrade && superset init && python -m colvenna_bi.setup"]
+          env:
+            {{- include "colvenna-bi.env" . | nindent 12 }}
+          resources:
+            requests: {cpu: 250m, memory: 1Gi}
+            limits: {memory: 2Gi}
+          securityContext:
+            {{- include "colvenna-bi.securityContext" . | nindent 12 }}
+          volumeMounts:
+            - {name: rds-ca, mountPath: /etc/colvenna-bi/rds-ca, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            - {name: home, mountPath: /app/superset_home}
+      volumes:
+        - name: rds-ca
+          configMap:
+            name: {{ .Values.metadataCaConfigMap }}
+        - name: tmp
+          emptyDir: {}
+        - name: home
+          emptyDir: {}
