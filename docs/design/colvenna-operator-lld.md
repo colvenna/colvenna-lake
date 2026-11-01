@@ -4,13 +4,13 @@ date: 2026-10-19
 status: implemented
 inputs:
   - docs/design/hld-realtime-lakehouse.md
-  - https://github.com/colvenna/colvenna-catalog/blob/v1.0.0-rc.1/docs/design/colvenna-catalog-lld.md
+  - https://github.com/colvenna/colvenna-catalog/blob/v1.0.0/docs/design/colvenna-catalog-lld.md
   - docs/design/acceptance-contract.md
 ---
 
 # colvenna-operator LLD
 
-本文是 M3 声明式接入与运维的实现设计。总体架构与取舍见 [HLD](hld-realtime-lakehouse.md) 第 7、9、11、12 节；控制平面见 Colvenna Catalog 仓库里、Colvenna Lake 固定版本的 [colvenna-catalog LLD](https://github.com/colvenna/colvenna-catalog/blob/v1.0.0-rc.1/docs/design/colvenna-catalog-lld.md)。本页随 M3 各 issue 增补：目前写到 #24 的 `LakeSource`（MySQL、PostgreSQL）、#25 的 Kafka 事件源、#26 的 `LakeTable`（DWD/DWS 分层表）、#27 的 `LakeTask`（批任务与维护任务）、#28 的治理声明与 `LakeErasure`（个人数据删除）、#29 的监控与流内数据质量、#32 的看板服务；M4 起增补 #38 的批量质量校验（`LakeQuality`、`LakeWaiver`）、#37 的血缘、#34 的 Iceberg 开放层（`LakeIcebergPublication`）与 #35 的列标签、脱敏与行过滤；M5 起增补 #136 的 BI 登录名（看板的 Doris 用户写进 BI 的凭证 Secret），以及 #138 控制台操作所涉及的部分（控制台扮演的两个用户的豁免批准人、数据负责人角色的 `patch`）。控制台本身见 [Web 入口与控制台 LLD](colvenna-console-lld.md)。
+本文是 M3 声明式接入与运维的实现设计。总体架构与取舍见 [HLD](hld-realtime-lakehouse.md) 第 7、9、11、12 节；控制平面见 Colvenna Catalog 仓库里、Colvenna Lake 固定版本的 [colvenna-catalog LLD](https://github.com/colvenna/colvenna-catalog/blob/v1.0.0/docs/design/colvenna-catalog-lld.md)。本页随 M3 各 issue 增补：目前写到 #24 的 `LakeSource`（MySQL、PostgreSQL）、#25 的 Kafka 事件源、#26 的 `LakeTable`（DWD/DWS 分层表）、#27 的 `LakeTask`（批任务与维护任务）、#28 的治理声明与 `LakeErasure`（个人数据删除）、#29 的监控与流内数据质量、#32 的看板服务；M4 起增补 #38 的批量质量校验（`LakeQuality`、`LakeWaiver`）、#37 的血缘、#34 的 Iceberg 开放层（`LakeIcebergPublication`）与 #35 的列标签、脱敏与行过滤；M5 起增补 #136 的 BI 登录名（看板的 Doris 用户写进 BI 的凭证 Secret），以及 #138 控制台操作所涉及的部分（控制台扮演的两个用户的豁免批准人、数据负责人角色的 `patch`）。控制台本身见 [Web 入口与控制台 LLD](colvenna-console-lld.md)。
 
 ## 组件
 

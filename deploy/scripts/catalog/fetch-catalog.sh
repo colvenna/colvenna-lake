@@ -8,8 +8,9 @@
 #      colvenna-catalog/source-commit is built_from, in its OCI config and in the package's
 #      Chart.yaml alike;
 #   2. copies the image by digest (crane) into the environment's own repository
-#      colvenna-lake-<env>/colvenna-catalog, tagged <catalog candidate> (a tag there that holds
-#      another digest is never moved), and keeps the chart's package in deploy/.state/<env>/catalog/;
+#      colvenna-lake-<env>/colvenna-catalog, tagged with the release's name (the pin's candidate: one
+#      of the catalog's candidates, or a release promoted from one, such as v1.0.0; a tag there that
+#      holds another digest is never moved), and keeps the chart's package in deploy/.state/<env>/catalog/;
 #   3. records both in deploy/.state/<env>/catalog-release.json, which install-catalog.sh reads.
 # The release comes from the registry the catalog publishes it in, GitHub Container Registry
 # (ghcr.io/colvenna/colvenna-catalog and ghcr.io/colvenna/charts/colvenna-catalog, as the pin names
