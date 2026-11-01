@@ -474,16 +474,15 @@ class CopyImagesTest(Deploy):
     OUTPUT = "Stacks[0].Outputs[?OutputKey=='QueryEngineImageRepositoryUri'].OutputValue | [0]"
 
     def answers(self, held, *more):
-        """The environment's repository holds that many of the two pinned images (0 or 2), each digest
-        once for each of its tags (two when tagged twice: ECR answers a digest per tag, #13)."""
-        digests = {0: [], 2: [FE, BE], "tagged twice": [FE, FE, BE, BE]}[held]
+        """The digests the environment's repository answers for the two pinned images: held, as ECR's
+        batch-get-image gives them, a digest once for each of its tags (#13)."""
         self.answer(IDENTITY, rule("cloudformation", "describe-stacks", "ColvennaLakeOldFoundation", self.OUTPUT,
                                    out=self.OWN + "\n"),
-                    rule("ecr", "batch-get-image", "colvenna-lake-old/query-engine", out="\t".join(digests) + "\n"),
+                    rule("ecr", "batch-get-image", "colvenna-lake-old/query-engine", out="\t".join(held) + "\n"),
                     *more)
 
     def test_a_source_of_the_wrong_form_is_refused_even_with_both_images_there(self):
-        self.answers(2)
+        self.answers([FE, BE])
         for source in ("docker.io/apache/doris", "111122223333.dkr.ecr.us-gov-west-1.amazonaws.com/doris"):
             status, out = self.run_script("deploy/scripts/doris/copy-images.sh", env={**self.ENV, "DORIS_IMAGE_SOURCE": source})
             self.assertEqual(status, 1, out)
@@ -499,7 +498,7 @@ class CopyImagesTest(Deploy):
                 for component, tag, digest in (("fe", FE_TAG, FE), ("be", BE_TAG, BE)) if component in components]
 
     def test_both_images_there_already_are_said_without_a_login(self):
-        self.answers(2, *self.tagged("fe", "be"))
+        self.answers([FE, BE], *self.tagged("fe", "be"))
         for env in ({"DORIS_IMAGE_SOURCE": self.SOURCE}, {}):
             status, out = self.run_script("deploy/scripts/doris/copy-images.sh", env={**self.ENV, **env})
             self.assertEqual(status, 0, out)
@@ -512,17 +511,26 @@ class CopyImagesTest(Deploy):
 
     def test_both_images_there_under_two_tags_each_are_held(self):
         # ECR answers a digest once per tag (#13): four images, the two digests, both there.
-        self.answers("tagged twice", *self.tagged("fe", "be"))
+        self.answers([FE, FE, BE, BE], *self.tagged("fe", "be"))
         status, out = self.run_script("deploy/scripts/doris/copy-images.sh", env={**self.ENV, "DORIS_IMAGE_SOURCE": self.SOURCE})
         self.assertEqual(status, 0, out)
         self.assertIn(f"be: {self.OWN}:{BE_TAG}@{BE} (already there)\n", out)
         self.assertEqual(self.called("--registry-id"), [])
         self.assertEqual(self.changes(), [])
 
+    def test_one_image_under_two_tags_is_not_both(self):
+        # The FE twice and no BE: two answers, one digest; the source is read for the BE.
+        self.answers([FE, FE], rule("ecr", "batch-get-image", "--registry-id", "111122223333", code=254,
+                                    err=error("AccessDeniedException", "BatchGetImage", "not authorized")))
+        status, out = self.run_script("deploy/scripts/doris/copy-images.sh", env={**self.ENV, "DORIS_IMAGE_SOURCE": self.SOURCE})
+        self.assertEqual(status, 1, out)
+        self.assertTrue(self.called("batch-get-image", "--registry-id", "111122223333"), self.calls())
+        self.assertEqual(self.changes(), [])
+
     def test_an_image_there_under_other_tags_only_is_tagged_without_the_source(self):
         # The BE under its tag, the FE under build-images.sh's build-<sha>-fe only (#278): the FE is
         # tagged by digest in the environment's registry, the one logged in to; nothing is copied.
-        self.answers(2, *self.tagged("be"),
+        self.answers([FE, BE], *self.tagged("be"),
                      rule("ecr", "describe-images", f"imageTag={FE_TAG}", code=254,
                           err=error("ImageNotFoundException", "DescribeImages", f"The image with tag {FE_TAG} does not exist")),
                      rule("ecr", "describe-images", f"imageDigest={FE}", out=FE + "\n"),
@@ -543,7 +551,7 @@ class CopyImagesTest(Deploy):
         # The repository's tags cannot be rewritten: the FE's tag holding another digest is said, and
         # nothing is tagged, copied or logged in to.
         other = "sha256:" + "7" * 64
-        self.answers(2, rule("ecr", "describe-images", f"imageTag={FE_TAG}", out=other + "\n"), *self.tagged("be"))
+        self.answers([FE, BE], rule("ecr", "describe-images", f"imageTag={FE_TAG}", out=other + "\n"), *self.tagged("be"))
         status, out = self.run_script("deploy/scripts/doris/copy-images.sh", env={**self.ENV, "DORIS_IMAGE_SOURCE": self.SOURCE})
         self.assertEqual(status, 1, out)
         self.assertIn(f"fe: colvenna-lake-old/query-engine:{FE_TAG} is already {other}, not {FE}", out)
@@ -552,7 +560,7 @@ class CopyImagesTest(Deploy):
 
     def test_a_copy_logs_in_to_the_source_s_region(self):
         held = {"images": [{"imageId": {"imageDigest": d}} for d in (FE, BE)]}
-        self.answers(0, rule("ecr", "batch-get-image", "--registry-id", "111122223333", out=held),
+        self.answers([], rule("ecr", "batch-get-image", "--registry-id", "111122223333", out=held),
                      rule("ecr", "get-login-password", out="token\n"),
                      rule("auth", cli="crane"), rule("copy", cli="crane"),
                      rule("digest", f"{self.OWN}:{FE_TAG}", out=FE + "\n", cli="crane"),

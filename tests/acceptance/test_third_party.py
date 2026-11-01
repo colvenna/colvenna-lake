@@ -141,21 +141,20 @@ if tool == "aws":
         # The release registry's repositories, by name, as --output text gives them (make-manifest.sh's check).
         print("\t".join(state.get("repositories", [])))
     elif args[:2] == ["ecr", "batch-get-image"]:
-        # The digests of the repository it holds: a count, their digests or the images (lib/preflight.sh's
-        # reads). Read by digest, ECR answers an image for each tag the digest has (once when it has none).
+        # The digests of the repository it holds: their digests or the images (lib/preflight.sh's reads).
+        # Read by digest, ECR answers an image for each tag the digest has (once when it has none).
         registry = (f'{option("--registry-id") or state["account"]}.dkr.ecr.'
                     f'{option("--region") or os.environ.get("AWS_REGION", "")}.amazonaws.com')
         repository = f'{registry}/{option("--repository-name")}'
         ids = args[args.index("--image-ids") + 1:]
         ids = [i.split("=", 1)[1] for i in ids[:next((n for n, a in enumerate(ids) if a.startswith("--")), len(ids))]]
-        images = [{"imageId": {"imageDigest": d, **({"imageTag": t} if t else {})}}
-                  for d in ids if held(f"{repository}@{d}")
-                  for t in ([t.rsplit(":", 1)[1] for t, v in state["tags"].items()
-                             if t.rsplit(":", 1)[0] == repository and v == d] or [None])]
-        query = option("--query") or ""
-        if "length(images)" in query:
-            print(len(images))
-        elif query == "images[].imageId.imageDigest":
+
+        def tags_of(digest):
+            return [ref.rsplit(":", 1)[1] for ref, d in state["tags"].items()
+                    if ref.rsplit(":", 1)[0] == repository and d == digest] or [None]
+        images = [{"imageId": {"imageDigest": d, **({"imageTag": tag} if tag else {})}}
+                  for d in ids if held(f"{repository}@{d}") for tag in tags_of(d)]
+        if option("--query") == "images[].imageId.imageDigest":
             print("\t".join(i["imageId"]["imageDigest"] for i in images))
         else:
             print(json.dumps({"images": images}))

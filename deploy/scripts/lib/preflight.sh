@@ -299,12 +299,13 @@ among_digests() {
 # Doris images already. A failed read counts as not, and so does a repository that does not exist
 # yet: the source is checked then, as when they are not there.
 doris_images_held() {
-  local held
+  local fe be held
+  fe="$(pinned_doris fe)" be="$(pinned_doris be)"
   held="$(aws ecr batch-get-image --repository-name "$(doris_repository)" \
-    --image-ids "imageDigest=$(pinned_doris fe)" "imageDigest=$(pinned_doris be)" \
+    --image-ids "imageDigest=$fe" "imageDigest=$be" \
     --accepted-media-types "${MANIFEST_TYPES[@]}" --query 'images[].imageId.imageDigest' --output text \
     2>/dev/null || true)"
-  among_digests "$(pinned_doris fe)" "$held" && among_digests "$(pinned_doris be)" "$held"
+  among_digests "$fe" "$held" && among_digests "$be" "$held"
 }
 
 # assert_doris_source: a source install can put the Doris images into the environment's repository:
