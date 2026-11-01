@@ -95,7 +95,7 @@ YAML
 # catalog_replicas: "<pod> <node> <source-sha>" per running colvenna-catalog replica; terminating ones
 # do not count.
 catalog_replicas() {
-  kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog -o json \
+  kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" -o json \
     | python3 -c 'import json,sys; [print(p["metadata"]["name"], p["spec"]["nodeName"], p["metadata"].get("annotations", {}).get("colvenna-lake/source-sha", "-")) for p in json.load(sys.stdin)["items"] if p["status"].get("phase") == "Running" and not p["metadata"].get("deletionTimestamp")]'
 }
 

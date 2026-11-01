@@ -14,7 +14,7 @@ evidence="${2:?usage: check-catalog-logs.sh <since> <evidence-dir>}"
 mkdir -p "$evidence"
 logs="$evidence/catalog.log"
 : >"$logs"
-for pod in $(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog \
+for pod in $(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" \
   -o jsonpath='{.items[*].metadata.name}'); do
   kubectl -n "$CATALOG_NAMESPACE" logs "$pod" --since-time="$since" >>"$logs"
 done

@@ -1,6 +1,7 @@
 """Offline checks of the repository's shell scripts (#227): scripts the docs run directly are
 executable, and no judgement reads `<command> | grep -q` under pipefail, where grep exits on its
-match, the command writing on dies of SIGPIPE (141), and the judgement reads as no match."""
+match, the command writing on dies of SIGPIPE (141), and the judgement reads as no match. And the
+catalog's pods are listed live (#15): a finished pod is no replica."""
 import os
 import re
 import subprocess
@@ -35,6 +36,23 @@ class ShellHygieneTest(unittest.TestCase):
                             path == p and marker in line for p, marker in IN_A_POD):
                         found.append(f"{path}:{n}")
         self.assertEqual(found, [], "use grep -q … <<<\"$(command)\" or the command's own exit status")
+
+    def test_catalog_pods_are_listed_live(self):
+        # A finished pod is no replica (#15): a patch reboot leaves the catalog's Failed beside their
+        # replacements. Every listing of its pods by label, to count, wait for or exec into them, takes
+        # the live ones (lib/common.sh's LIVE_PODS); deleting them all needs no filter.
+        listing = re.compile(r"\b(get pods|wait pod)\b.*-l app\.kubernetes\.io/name=colvenna-catalog")
+        found, seen = [], 0
+        for _, _, _, path in tracked("deploy/*.sh", "deploy/scripts/*/*.sh", "tests/*.sh", "tests/*/*.sh",
+                                     "tests/*/*/*.sh"):
+            with open(os.path.join(ROOT, path), encoding="utf-8") as f:
+                for n, line in enumerate(f, 1):
+                    if listing.search(line):
+                        seen += 1
+                        if '"$LIVE_PODS"' not in line:
+                            found.append(f"{path}:{n}")
+        self.assertEqual(found, [], 'add "$LIVE_PODS" (lib/common.sh) to these listings')
+        self.assertGreaterEqual(seen, 9)
 
 
 if __name__ == "__main__":
