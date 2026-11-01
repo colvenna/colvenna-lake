@@ -65,7 +65,7 @@ metadata_database() {
 available "$CATALOG_NAMESPACE" colvenna-catalog
 # On as many nodes as the chart keeps them apart across: min(replicas, write node group size), so a
 # group of one node passes with every replica on it.
-nodes="$(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog \
+nodes="$(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" \
   -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | awk 'NF' | sort -u | wc -l)"
 replicas="$(kubectl -n "$CATALOG_NAMESPACE" get deploy colvenna-catalog -o jsonpath='{.spec.replicas}' 2>/dev/null || echo 0)"
 eligible="$(write_node_group_size 2>/dev/null || echo 0)"
@@ -74,7 +74,7 @@ check catalog-spread "$( ((nodes >= apart && apart > 0)) && echo true || echo fa
   "replicas on $nodes nodes; $replicas replicas, a write node group of $eligible"
 pdb="$(kubectl -n "$CATALOG_NAMESPACE" get pdb colvenna-catalog -o jsonpath='{.spec.minAvailable}' 2>/dev/null || true)"
 check catalog-disruption-budget "$([[ -n "$pdb" ]] && echo true || echo false)" "minAvailable ${pdb:-none}"
-for pod in $(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog -o name); do
+for pod in $(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" -o name); do
   if kubectl -n "$CATALOG_NAMESPACE" exec "${pod#pod/}" -- \
     curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:8182/readyz >/dev/null 2>&1; then
     check "${pod#pod/}-readyz" true "PostgreSQL reachable"

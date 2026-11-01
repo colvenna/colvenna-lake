@@ -58,7 +58,7 @@ replicas_apart() { # replicas_apart: no two running replicas share a node, in on
   [[ "$(sort -u <<<"$nodes" | wc -l)" == "$(wc -l <<<"$nodes")" ]]
 }
 unscheduled() { # unscheduled: how many replicas the scheduler finds no node for
-  kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog \
+  kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" \
     -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="PodScheduled")].reason}{"\n"}{end}' \
     | grep -c '^Unschedulable$' || true
 }
@@ -190,7 +190,7 @@ log "B: before the restore: $(wc -l <"$evidence/before-restore/rest.history") sn
 
 log "B: restore colvenna_catalog from the backup, catalog stopped"
 kubectl -n "$CATALOG_NAMESPACE" scale deploy/colvenna-catalog --replicas=0 >/dev/null
-kubectl -n "$CATALOG_NAMESPACE" wait pod -l app.kubernetes.io/name=colvenna-catalog --for=delete \
+kubectl -n "$CATALOG_NAMESPACE" wait pod -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" --for=delete \
   --timeout=5m >/dev/null 2>&1 || true
 pg pg_restore --clean --if-exists --no-owner --single-transaction -d colvenna_catalog \
   /backup/colvenna_catalog.dump >"$evidence/restore.txt" 2>&1

@@ -421,7 +421,7 @@ stopped=$SECONDS
 log "stop the catalog ($replicas replicas)"
 kubectl -n "$CATALOG_NAMESPACE" scale deploy/colvenna-catalog --replicas=0 >/dev/null
 for _ in $(seq 1 60); do
-  running="$(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog -o name)"
+  running="$(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" -o name)"
   [[ -z "$running" ]] && break
   sleep 5
 done
@@ -440,7 +440,7 @@ kubectl -n "$CATALOG_NAMESPACE" rollout status deploy/colvenna-catalog --timeout
 down=$((SECONDS - stopped))
 echo "$down" >"$evidence/catalog-stopped-seconds.txt"
 log "catalog serving again after $down s stopped: $(kubectl -n "$CATALOG_NAMESPACE" get pods \
-  -l app.kubernetes.io/name=colvenna-catalog -o jsonpath='{range .items[*]}{.metadata.name} {.spec.nodeName};{end}')"
+  -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" -o jsonpath='{range .items[*]}{.metadata.name} {.spec.nodeName};{end}')"
 if $keep; then
   log "$temporary kept (--keep-instance): it bills until deleted; uninstall.sh deletes it"
 else

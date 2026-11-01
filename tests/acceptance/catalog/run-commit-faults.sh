@@ -54,7 +54,7 @@ trap cleanup EXIT
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$evidence/faults.txt"; }
 fail() { log "FAIL: $*"; exit 1; }
 replicas() {
-  kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog \
+  kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" \
     -o jsonpath='{.items[*].metadata.name}'
 }
 ready_replicas() {

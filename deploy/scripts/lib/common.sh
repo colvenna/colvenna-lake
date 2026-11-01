@@ -36,6 +36,14 @@ ECR_REGISTRY="$COLVENNA_ACCOUNT.dkr.ecr.$COLVENNA_REGION.amazonaws.com"
 CDK_ENV_CONTEXT=(-c "env=$COLVENNA_ENV" -c "account=$COLVENNA_ACCOUNT")
 
 CATALOG_NAMESPACE=colvenna-catalog
+# LIVE_PODS: kubectl's field selector for the pods not finished, neither Succeeded nor Failed. A
+# finished pod is no replica. The kubelet's graceful node shutdown (a patch reboot) ends the pods it
+# stops as "Terminated", "Pod was terminated in response to imminent node shutdown" (Kubernetes docs,
+# Node Shutdowns); seen on uat on 2026-10-29 as phase Failed, beside the pods their ReplicaSet started
+# in their place (#15). A failed pod's object stays until something deletes it, or until the terminated
+# pods outnumber kube-controller-manager's terminated-pod-gc-threshold (Kubernetes docs, Pod Lifecycle,
+# "Garbage collection of Pods"). A pod listed to be counted, waited for, exec'd into or probed is a live one.
+LIVE_PODS="--field-selector=status.phase!=Succeeded,status.phase!=Failed"
 # Doris images run as root: their own namespace at Pod Security baseline, not restricted.
 DORIS_NAMESPACE=colvenna-doris
 # The development Kafka (tests/fixtures/kafka/dev-kafka.sh): its release, in the one namespace the

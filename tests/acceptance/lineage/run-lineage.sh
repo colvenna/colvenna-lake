@@ -377,7 +377,7 @@ if [[ "$got" == refused ]]; then
 else
   verdict unlabelled-namespace-cannot-connect FAIL "from $JOB_NAMESPACE: $got"
 fi
-api_ip="$(kubectl -n "$LINEAGE_NAMESPACE" get pod -l app=marquez -o jsonpath='{.items[0].status.podIP}')"
+api_ip="$(kubectl -n "$LINEAGE_NAMESPACE" get pod -l app=marquez "$LIVE_PODS" -o jsonpath='{.items[0].status.podIP}')"
 web="$(probe "$JOB_NAMESPACE" "http://marquez-web.$LINEAGE_NAMESPACE.svc:3000/")"
 admin="$(probe "$JOB_NAMESPACE" "http://$api_ip:5001/healthcheck")"
 if [[ "$web" == refused && "$admin" == refused ]]; then

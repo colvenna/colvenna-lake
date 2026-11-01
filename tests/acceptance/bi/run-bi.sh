@@ -469,7 +469,7 @@ check reports-off "$(field "$evidence/http/reports.json" 'd["status"]')" python3
 
 # ------------------------------------------------------------------------------- bypass
 step "bypass"
-pod="$(kubectl -n "$BI_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-bi -o jsonpath='{.items[0].metadata.name}')"
+pod="$(kubectl -n "$BI_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-bi "$LIVE_PODS" -o jsonpath='{.items[0].metadata.name}')"
 pod_ip="$(kubectl -n "$BI_NAMESPACE" get pod "$pod" -o jsonpath='{.status.podIP}')"
 cat >"$state/probe.yaml" <<YAML
 apiVersion: v1

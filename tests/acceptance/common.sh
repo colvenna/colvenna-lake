@@ -95,7 +95,7 @@ YAML
 # catalog_replicas: "<pod> <node> <source-sha>" per running colvenna-catalog replica; terminating ones
 # do not count.
 catalog_replicas() {
-  kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog -o json \
+  kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" -o json \
     | python3 -c 'import json,sys; [print(p["metadata"]["name"], p["spec"]["nodeName"], p["metadata"].get("annotations", {}).get("colvenna-lake/source-sha", "-")) for p in json.load(sys.stdin)["items"] if p["status"].get("phase") == "Running" and not p["metadata"].get("deletionTimestamp")]'
 }
 
@@ -157,7 +157,7 @@ source_diagnostics() {
   "${k[@]}" -n "$JOB_NAMESPACE" get lakesource "$name" -o yaml >"$dir/lakesource.yaml" 2>&1 || true
   "${k[@]}" -n "$JOB_NAMESPACE" get flinkdeployment -l "colvenna-lake.io/source=$name" -o yaml \
     >"$dir/flinkdeployments.yaml" 2>&1 || true
-  op="$("${k[@]}" -n "$OPERATOR_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-operator -o name 2>/dev/null \
+  op="$("${k[@]}" -n "$OPERATOR_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-operator "$LIVE_PODS" -o name 2>/dev/null \
     | sed -n 1p || true)"
   if [[ -n "$op" ]]; then
     "${k[@]}" -n "$OPERATOR_NAMESPACE" logs "$op" --since=3h 2>&1 | grep -wF "$name" >"$dir/operator.log" || true

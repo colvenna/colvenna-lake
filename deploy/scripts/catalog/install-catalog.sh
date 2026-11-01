@@ -224,7 +224,7 @@ cp "$record" "$evidence/catalog-release.json"
 
 # --- bootstrap admin ----------------------------------------------------------------------------
 if ! kubectl -n "$CATALOG_NAMESPACE" get secret colvenna-catalog-admin-token >/dev/null 2>&1; then
-  pod="$(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog \
+  pod="$(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" \
     -o jsonpath='{.items[0].metadata.name}')"
   kubectl -n "$CATALOG_NAMESPACE" exec "$pod" -- \
     java -cp '/opt/colvenna-catalog/colvenna-catalog.jar:/opt/colvenna-catalog/lib/*' \
