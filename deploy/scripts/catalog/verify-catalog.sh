@@ -66,7 +66,7 @@ kubectl -n "$outsider_ns" create secret generic verify-tokens --from-file=admin=
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 url="https://colvenna-catalog.$CATALOG_NAMESPACE.svc:8181"
 config="$url/v1/config?warehouse=colvenna"
-pod="$(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog \
+pod="$(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" \
   -o jsonpath='{.items[0].metadata.name}')"
 pod_ip="$(kubectl -n "$CATALOG_NAMESPACE" get pod "$pod" -o jsonpath='{.status.podIP}')"
 

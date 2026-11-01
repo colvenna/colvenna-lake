@@ -201,15 +201,16 @@ while IFS=$'\t' read -r key repository _; do
   log "recorded $key $image"
 done <<<"$names"
 
-# running <namespace> <kind>/<name>: the digests the containers of the workload's pods run, once
-# each; "not-ready" for a container that is not, so that a rollout in progress is not taken.
+# running <namespace> <kind>/<name>: the digests the containers of the workload's live pods run, once
+# each; "not-ready" for a container that is not, so that a rollout in progress is not taken. A finished
+# pod (LIVE_PODS) runs nothing.
 running() {
   local selector
   selector="$(kubectl -n "$1" get "$2" -o json | python3 -c '
 import json, sys
 labels = json.load(sys.stdin)["spec"]["selector"]["matchLabels"]
 print(",".join(f"{k}={v}" for k, v in sorted(labels.items())))')"
-  kubectl -n "$1" get pods -l "$selector" -o json | python3 -c '
+  kubectl -n "$1" get pods -l "$selector" "$LIVE_PODS" -o json | python3 -c '
 import json, sys
 pods = json.load(sys.stdin)["items"]
 if not pods:
