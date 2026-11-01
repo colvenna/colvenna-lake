@@ -286,6 +286,15 @@ doris_source_parts() {
   fi
 }
 
+# among_digests <digest> <batch-get-image's digests, as --output text gives them>: whether the digest is
+# one of them. Read by digest, ECR answers an image for each tag the digest has (two for a release's
+# image, tagged with its candidate's name and its own, #13), so the digests are what is held, never
+# how many images came back.
+among_digests() {
+  local digests=" ${2//[$'\t\n']/ } "
+  [[ -n "$1" && "$digests" == *" $1 "* ]]
+}
+
 # doris_images_held: whether the environment's repository (doris_repository) holds both pinned
 # Doris images already. A failed read counts as not, and so does a repository that does not exist
 # yet: the source is checked then, as when they are not there.
@@ -293,8 +302,9 @@ doris_images_held() {
   local held
   held="$(aws ecr batch-get-image --repository-name "$(doris_repository)" \
     --image-ids "imageDigest=$(pinned_doris fe)" "imageDigest=$(pinned_doris be)" \
-    --accepted-media-types "${MANIFEST_TYPES[@]}" --query 'length(images)' --output text 2>/dev/null || true)"
-  [[ "$held" == 2 ]]
+    --accepted-media-types "${MANIFEST_TYPES[@]}" --query 'images[].imageId.imageDigest' --output text \
+    2>/dev/null || true)"
+  among_digests "$(pinned_doris fe)" "$held" && among_digests "$(pinned_doris be)" "$held"
 }
 
 # assert_doris_source: a source install can put the Doris images into the environment's repository:
@@ -367,8 +377,8 @@ assert_catalog_source() {
     answer="$(aws_read "Colvenna Catalog $candidate's $kind in $registry" ecr batch-get-image \
       --region "$region" --registry-id "$account" --repository-name "${ref#*/}" \
       --image-ids "imageDigest=$digest" --accepted-media-types "${MANIFEST_TYPES[@]}" \
-      --query 'length(images)' --output text)" || return 1
-    if [[ "$answer" != 1 ]]; then
+      --query 'images[].imageId.imageDigest' --output text)" || return 1
+    if ! among_digests "$digest" "$answer"; then
       echo "COLVENNA_CATALOG_REGISTRY: ${registry%%/*} holds no ${ref#*/}@$digest, Colvenna Catalog $candidate's" \
         "$kind (deploy/images/colvenna-catalog.json): give a registry that does" >&2
       return 1

@@ -474,9 +474,13 @@ class CopyImagesTest(Deploy):
     OUTPUT = "Stacks[0].Outputs[?OutputKey=='QueryEngineImageRepositoryUri'].OutputValue | [0]"
 
     def answers(self, held, *more):
+        """The environment's repository holds that many of the two pinned images (0 or 2), each digest
+        once for each of its tags (two when tagged twice: ECR answers a digest per tag, #13)."""
+        digests = {0: [], 2: [FE, BE], "tagged twice": [FE, FE, BE, BE]}[held]
         self.answer(IDENTITY, rule("cloudformation", "describe-stacks", "ColvennaLakeOldFoundation", self.OUTPUT,
                                    out=self.OWN + "\n"),
-                    rule("ecr", "batch-get-image", "colvenna-lake-old/query-engine", out=f"{held}\n"), *more)
+                    rule("ecr", "batch-get-image", "colvenna-lake-old/query-engine", out="\t".join(digests) + "\n"),
+                    *more)
 
     def test_a_source_of_the_wrong_form_is_refused_even_with_both_images_there(self):
         self.answers(2)
@@ -504,6 +508,15 @@ class CopyImagesTest(Deploy):
         self.assertEqual(self.called("--registry-id"), [])
         self.assertEqual(self.called("get-login-password"), [])
         self.assertEqual(self.called("crane"), [])
+        self.assertEqual(self.changes(), [])
+
+    def test_both_images_there_under_two_tags_each_are_held(self):
+        # ECR answers a digest once per tag (#13): four images, the two digests, both there.
+        self.answers("tagged twice", *self.tagged("fe", "be"))
+        status, out = self.run_script("deploy/scripts/doris/copy-images.sh", env={**self.ENV, "DORIS_IMAGE_SOURCE": self.SOURCE})
+        self.assertEqual(status, 0, out)
+        self.assertIn(f"be: {self.OWN}:{BE_TAG}@{BE} (already there)\n", out)
+        self.assertEqual(self.called("--registry-id"), [])
         self.assertEqual(self.changes(), [])
 
     def test_an_image_there_under_other_tags_only_is_tagged_without_the_source(self):
