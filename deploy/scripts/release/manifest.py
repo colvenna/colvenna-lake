@@ -282,21 +282,21 @@ def catalog_pin_problems(pin):
             found.append(what)
 
     candidate = pin.get("candidate")
+    name = CATALOG_CANDIDATE.fullmatch(candidate) if isinstance(candidate, str) else None
     # A release (no -rc.<n>) records its promotion; a candidate has none.
-    release = isinstance(candidate, str) and CATALOG_CANDIDATE.fullmatch(candidate) is not None \
-        and "-rc." not in candidate
+    release = name is not None and name[4] is None
     expected = ("repository", "candidate", "tag_commit", "built_from", "registry", "image", "chart", "schema_version")
     if release:
         expected += ("promotion",)
-    elif "promotion" in pin:
+    elif name is not None and "promotion" in pin:
+        # Said once, as what it is, rather than as an unknown field.
         found.append(f"promotion: {candidate!r} is a candidate; only a release promoted from one has a promotion")
-        pin = {key: value for key, value in pin.items() if key != "promotion"}
+        expected += ("promotion",)
     if not fields(pin, "", expected):
         return found
     need(isinstance(pin["repository"], str) and CATALOG_SOURCE.fullmatch(pin["repository"]) is not None,
          f"repository: {pin['repository']!r} is not https://github.com/<owner>/colvenna-catalog")
-    need(isinstance(candidate, str) and CATALOG_CANDIDATE.fullmatch(candidate) is not None,
-         f"candidate: {candidate!r} is not a catalog release, v<major>.<minor>.<patch>[-rc.<n>]")
+    need(name is not None, f"candidate: {candidate!r} is not a catalog release, v<major>.<minor>.<patch>[-rc.<n>]")
     for key in ("tag_commit", "built_from"):
         need(isinstance(pin[key], str) and SHA.fullmatch(pin[key]) is not None, f"{key}: not a full commit SHA")
     # The catalog's tag is a commit of its own on top of built_from (release/<candidate>/ added), a

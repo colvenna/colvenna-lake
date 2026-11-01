@@ -360,13 +360,13 @@ class Problems(unittest.TestCase):
 class CatalogPin(unittest.TestCase):
     """deploy/images/colvenna-catalog.json: the Colvenna Catalog release the tree runs (#295)."""
 
-    def found(self, change):
-        pin = copy.deepcopy(PIN)
+    def found(self, change, pin=PIN):
+        pin = copy.deepcopy(pin)
         change(pin)
         return manifest.catalog_pin_problems(pin)
 
-    def assertFound(self, change, text):
-        found = self.found(change)
+    def assertFound(self, change, text, pin=PIN):
+        found = self.found(change, pin)
         self.assertTrue(any(text in p for p in found), found)
 
     def test_the_tree_s_pin(self):
@@ -382,25 +382,24 @@ class CatalogPin(unittest.TestCase):
         # The catalog's tag adds its release record to the commit the release was built from.
         self.assertNotEqual(PIN["tag_commit"], PIN["built_from"])
 
-    def test_a_release_promoted_from_a_candidate_or_a_candidate(self):
+    def test_a_pin_of_a_release_or_of_a_candidate(self):
         self.assertEqual(manifest.catalog_pin_problems(RELEASE_PIN), [])
         self.assertEqual(manifest.catalog_pin_problems(CANDIDATE_PIN), [])
         # The tree's pin is one of the two kinds, its promotion as its name says.
         self.assertEqual("promotion" in PIN, "-rc." not in PIN["candidate"])
 
     def test_what_a_release_s_promotion_is_not(self):
-        def found(change, pin=RELEASE_PIN):
-            pin = copy.deepcopy(pin)
-            change(pin)
-            return manifest.catalog_pin_problems(pin)
-
         def assertFound(change, text, pin=RELEASE_PIN):
-            problems = found(change, pin)
-            self.assertTrue(any(text in p for p in problems), problems)
+            self.assertFound(change, text, pin)
         # A release says where it was promoted from; a candidate was promoted from nothing.
         assertFound(lambda p: p.pop("promotion"), "promotion: missing")
-        assertFound(lambda p: p.update(promotion=RELEASE_PIN["promotion"]), "only a release promoted from one",
+        assertFound(lambda p: p.update(promotion=RELEASE_PIN["promotion"]), "'v1.0.0-rc.4' is a candidate",
                     CANDIDATE_PIN)
+        self.assertEqual([p for p in self.found(lambda p: p.update(promotion={}), CANDIDATE_PIN) if "promotion" in p],
+                         ["promotion: 'v1.0.0-rc.4' is a candidate; only a release promoted from one has a promotion"])
+        # A name that is neither: the name is what is wrong, and the promotion is no field of a pin then.
+        assertFound(lambda p: p.update(candidate="v1.0"), "candidate: 'v1.0' is not a catalog release")
+        assertFound(lambda p: p.update(candidate="v1.0"), "unknown field promotion")
         assertFound(lambda p: p.update(promotion="v1.0.0-rc.4"), "promotion: not an object")
         for field in manifest.CATALOG_PROMOTION:
             assertFound(lambda p, field=field: p["promotion"].pop(field), f"promotion.{field}: missing")
@@ -420,8 +419,9 @@ class CatalogPin(unittest.TestCase):
                     "promotion.chart_digest: the release's own")
         # Packaged as the release's version, not the candidate's.
         assertFound(lambda p: p["chart"].update(version="1.0.0-rc.4"), "chart.version")
-        # No account id in it either.
+        # No account id in it either, a release's or one a candidate should not have.
         assertFound(lambda p: p["promotion"].update(candidate="123456789012"), "AWS account id")
+        assertFound(lambda p: p.update(promotion={"candidate": "123456789012"}), "AWS account id", CANDIDATE_PIN)
 
     def test_a_manifest_records_the_release_s_promotion(self):
         # A candidate's manifest keeps the pin's promotion under catalog, as it keeps the rest of it.
