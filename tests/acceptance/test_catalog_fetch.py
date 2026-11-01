@@ -369,7 +369,14 @@ class CatalogSourcePreflightTest(unittest.TestCase):
         self.assertEqual(len(reads), 2)
         self.assertTrue(all("--region us-east-2 --registry-id 210987654321" in c for c in reads), reads)
         self.assertIn("--repository-name colvenna-catalog-release/charts/colvenna-catalog", reads[1])
+        # A digest with two tags there, as a release's image has (its candidate's tag and its own, #13):
+        # ECR answers it twice, and it is there all the same.
+        scratch.state["tags"].update({f"{PRIVATE}/colvenna-catalog:v1.0.0-rc.4": IMAGE,
+                                      f"{PRIVATE}/colvenna-catalog:v1.0.0": IMAGE})
+        out = self.assert_source(PRIVATE, scratch)
+        self.assertEqual(out.returncode, 0, out.stderr)
         # Another digest there: refused, naming the setting.
+        scratch.state["tags"] = {}
         scratch.state["digests"] = [f"{PRIVATE}/colvenna-catalog@{IMAGE}"]
         out = self.assert_source(PRIVATE, scratch)
         self.assertEqual(out.returncode, 1)
