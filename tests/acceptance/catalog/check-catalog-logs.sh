@@ -14,9 +14,12 @@ evidence="${2:?usage: check-catalog-logs.sh <since> <evidence-dir>}"
 mkdir -p "$evidence"
 logs="$evidence/catalog.log"
 : >"$logs"
-for pod in $(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" \
+# Every pod's log, a finished pod's too: a replica that served in the window and then stopped has its
+# lines there (#15). One whose log is gone (its node rebooted) is said, beside the others'.
+for pod in $(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog \
   -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl -n "$CATALOG_NAMESPACE" logs "$pod" --since-time="$since" >>"$logs"
+  kubectl -n "$CATALOG_NAMESPACE" logs "$pod" --since-time="$since" >>"$logs" 2>"$evidence/logs-error.txt" \
+    || echo "$pod: no log read ($(tail -1 "$evidence/logs-error.txt"))" >>"$evidence/unread-logs.txt"
 done
 missing="$(grep -c 'no such endpoint' "$logs" || true)"
 grep -oE 'not implemented \([A-Z_]+\)' "$logs" | sort | uniq -c >"$evidence/not-implemented.txt" || true

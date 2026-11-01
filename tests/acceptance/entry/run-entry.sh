@@ -207,7 +207,7 @@ check client-identity-headers-not-trusted "$(field "$file" '(d["status"], d["bod
 
 # --- Nothing but the load balancer reaches the console --------------------------------------------
 step "bypass"
-pod="$(kubectl -n "$CONSOLE_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-console -o jsonpath='{.items[0].metadata.name}')"
+pod="$(kubectl -n "$CONSOLE_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-console "$LIVE_PODS" -o jsonpath='{.items[0].metadata.name}')"
 pod_ip="$(kubectl -n "$CONSOLE_NAMESPACE" get pod "$pod" -o jsonpath='{.status.podIP}')"
 cat >"$state/probe.yaml" <<YAML
 apiVersion: v1

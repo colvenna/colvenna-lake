@@ -481,7 +481,7 @@ COLVENNA_ENV=<env> tests/acceptance/rerun-uat.sh <证据目录> cdc-2 \
 | `colvenna-catalog/colvenna-catalog` | 就绪副本数等于期望数 |
 | `catalog-spread` | 副本分布在 min(副本数, 写入节点组的大小) 台节点上：默认规模是两台；写入节点组只有一台时，两个副本都在它上面也通过 |
 | `catalog-disruption-budget` | 有 PodDisruptionBudget |
-| `<pod>-readyz`，每个副本一行 | 就绪端点应答，即连得上 PostgreSQL。已经结束的 Pod（`Succeeded`、`Failed`，例如节点补丁重启时 kubelet 停掉的）不是副本，不列（#15） |
+| `<pod>-readyz`，每个副本一行 | 就绪端点应答，即连得上 PostgreSQL。已经结束的 Pod（`Succeeded`、`Failed`）不是副本，不列：节点优雅关闭时 kubelet 停掉的 Pod 标为 `Terminated`（[Node Shutdowns](https://kubernetes.io/docs/concepts/cluster-administration/node-shutdown/)），2026-10-29 节点补丁重启后在 uat 上看到它们处于 `Failed`，与 ReplicaSet 补起的新 Pod 并存，直到被删掉（[Pod 的垃圾回收](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-garbage-collection)；#15） |
 | `metadata-database` | RDS 实例处在照常接受连接的状态：`available`，或备份中的 `backing-up` 等（逐个列在 `check-health.sh` 的 `metadata_database` 里，#237）；细节依次记状态、版本、多可用区与备份天数 |
 | `catalog-schema` | 库的 schema 版本等于本提交固定的 Colvenna Catalog 发布版的 `schema_version`（`deploy/images/colvenna-catalog.json`，即它的服务端带的迁移数） |
 | `flink-operator/flink-kubernetes-operator`、`doris-operator/doris-operator` | 可用 |

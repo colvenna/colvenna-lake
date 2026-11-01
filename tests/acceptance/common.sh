@@ -157,7 +157,7 @@ source_diagnostics() {
   "${k[@]}" -n "$JOB_NAMESPACE" get lakesource "$name" -o yaml >"$dir/lakesource.yaml" 2>&1 || true
   "${k[@]}" -n "$JOB_NAMESPACE" get flinkdeployment -l "colvenna-lake.io/source=$name" -o yaml \
     >"$dir/flinkdeployments.yaml" 2>&1 || true
-  op="$("${k[@]}" -n "$OPERATOR_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-operator -o name 2>/dev/null \
+  op="$("${k[@]}" -n "$OPERATOR_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-operator "$LIVE_PODS" -o name 2>/dev/null \
     | sed -n 1p || true)"
   if [[ -n "$op" ]]; then
     "${k[@]}" -n "$OPERATOR_NAMESPACE" logs "$op" --since=3h 2>&1 | grep -wF "$name" >"$dir/operator.log" || true
