@@ -483,7 +483,7 @@ COLVENNA_ENV=<env> tests/acceptance/rerun-uat.sh <证据目录> cdc-2 \
 | `catalog-disruption-budget` | 有 PodDisruptionBudget |
 | `<pod>-readyz`，每个副本一行 | 就绪端点应答，即连得上 PostgreSQL |
 | `metadata-database` | RDS 实例处在照常接受连接的状态：`available`，或备份中的 `backing-up` 等（逐个列在 `check-health.sh` 的 `metadata_database` 里，#237）；细节依次记状态、版本、多可用区与备份天数 |
-| `catalog-schema` | 库的 schema 版本等于本提交的迁移数 |
+| `catalog-schema` | 库的 schema 版本等于本提交固定的 Colvenna Catalog 发布版的 `schema_version`（`deploy/images/colvenna-catalog.json`，即它的服务端带的迁移数） |
 | `flink-operator/flink-kubernetes-operator`、`doris-operator/doris-operator` | 可用 |
 | `doris-operator-resources` | Doris Operator 请求 100m CPU、128Mi 内存，上限 500m、512Mi，即 `deploy/scripts/lib/common.sh` 的 `DORIS_OPERATOR_RESOURCES`（#170 的产品修复；chart 的默认是 2 CPU、4 GiB） |
 

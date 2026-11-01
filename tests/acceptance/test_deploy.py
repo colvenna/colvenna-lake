@@ -22,7 +22,7 @@ verify          colvenna-catalog's health
 """
 ACCESS = "\n".join(f"check {i} expected=401 actual=401" for i in range(14))
 VERIFY = f"""colvenna-catalog/colvenna-catalog OK 2/2 ready
-catalog-schema OK database at schema version 2, Colvenna Catalog v1.0.0-rc.1 applies 2
+catalog-schema OK database at schema version 4, Colvenna Catalog v1.0.0 applies 4
 {ACCESS}
 PASS
 https://console.colvenna-uat.example.com/: 302 to https://colvenna-lake-uat.auth.us-west-2.amazoncognito.com sign-in

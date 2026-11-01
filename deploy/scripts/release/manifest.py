@@ -12,7 +12,10 @@ registry and no AWS account (#248): the release registry, <account>.dkr.ecr.<reg
 is the installer's setting COLVENNA_RELEASE_REGISTRY, whichever account and region hold a copy.
 
 Colvenna Catalog is a product of its own (#295), and this tree runs the release of it that
-deploy/images/colvenna-catalog.json pins: the catalog's repository and candidate, the commit its tag
+deploy/images/colvenna-catalog.json pins: the catalog's repository and the release's name
+(candidate: one of the catalog's candidates, v<major>.<minor>.<patch>-rc.<n>, or a release promoted
+from a candidate judged GO, v<major>.<minor>.<patch>, with promotion saying which: that candidate,
+its tag's commit, the commit that records its GO verdict, and its chart's digest), the commit its tag
 points at, the commit its image and chart were built from (built_from), the registry the catalog
 publishes them in (registry: GitHub Container Registry, ghcr.io/colvenna, read anonymously) and both
 by their repository there and digest (ghcr.io/colvenna/colvenna-catalog and
@@ -156,8 +159,13 @@ CATALOG_PLATFORM = "linux/amd64"
 CATALOG_REVISION_LABEL = "org.opencontainers.image.revision"
 CATALOG_SOURCE_ANNOTATION = "colvenna-catalog/source-commit"
 CATALOG_SOURCE = re.compile(r"^https://github\.com/[A-Za-z0-9][A-Za-z0-9-]*/colvenna-catalog$")
-# A catalog release lake may pin: a candidate or a release, never a trial (-dev.<n>).
+# A catalog release lake may pin: a candidate or a release, never a trial (-dev.<n>). A release is
+# one of its candidates judged GO and promoted without rebuilding anything (colvenna-catalog#65): the
+# same image digest, the candidate's chart repackaged as the release's version, so a new chart digest,
+# and the release's tag a commit of its own on top of the candidate's tag commit (release/<release>/
+# added). The pin's promotion records where it came from (CATALOG_PROMOTION).
 CATALOG_CANDIDATE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$")
+CATALOG_PROMOTION = ("candidate", "tag_commit", "acceptance", "chart_digest")
 INSTALL_MODES = ("platform", "fixtures")
 # The candidate's performance tier, fixed before it is measured (#207; the requester's decision of
 # 2026-10-22): the default scale, the load it carries for how long, and where the latency targets
@@ -273,18 +281,44 @@ def catalog_pin_problems(pin):
         if not ok:
             found.append(what)
 
-    if not fields(pin, "", ("repository", "candidate", "tag_commit", "built_from", "registry", "image", "chart",
-                            "schema_version")):
+    candidate = pin.get("candidate")
+    name = CATALOG_CANDIDATE.fullmatch(candidate) if isinstance(candidate, str) else None
+    # A release (no -rc.<n>) records its promotion; a candidate has none.
+    release = name is not None and name[4] is None
+    expected = ("repository", "candidate", "tag_commit", "built_from", "registry", "image", "chart", "schema_version")
+    if release:
+        expected += ("promotion",)
+    elif name is not None and "promotion" in pin:
+        # Said once, as what it is, rather than as an unknown field.
+        found.append(f"promotion: {candidate!r} is a candidate; only a release promoted from one has a promotion")
+        expected += ("promotion",)
+    if not fields(pin, "", expected):
         return found
     need(isinstance(pin["repository"], str) and CATALOG_SOURCE.fullmatch(pin["repository"]) is not None,
          f"repository: {pin['repository']!r} is not https://github.com/<owner>/colvenna-catalog")
-    candidate = pin["candidate"]
-    need(isinstance(candidate, str) and CATALOG_CANDIDATE.fullmatch(candidate) is not None,
-         f"candidate: {candidate!r} is not a catalog release, v<major>.<minor>.<patch>[-rc.<n>]")
+    need(name is not None, f"candidate: {candidate!r} is not a catalog release, v<major>.<minor>.<patch>[-rc.<n>]")
     for key in ("tag_commit", "built_from"):
         need(isinstance(pin[key], str) and SHA.fullmatch(pin[key]) is not None, f"{key}: not a full commit SHA")
-    # The catalog's tag is a commit of its own on top of built_from (release/<candidate>/ added).
+    # The catalog's tag is a commit of its own on top of built_from (release/<candidate>/ added), a
+    # release's on top of its candidate's tag commit (release/<release>/ added).
     need(pin["tag_commit"] != pin["built_from"], "tag_commit: the same as built_from, not the tag's commit")
+    if release and fields(pin["promotion"], "promotion", CATALOG_PROMOTION):
+        promotion = pin["promotion"]
+        # Promoted from one of its own candidates: v1.0.0 from v1.0.0-rc.<n>.
+        need(isinstance(promotion["candidate"], str) and promotion["candidate"].startswith(f"{candidate}-rc.")
+             and CATALOG_CANDIDATE.fullmatch(promotion["candidate"]) is not None,
+             f"promotion.candidate: {promotion['candidate']!r} is not one of {candidate}'s candidates,"
+             f" {candidate}-rc.<n>")
+        for key in ("tag_commit", "acceptance"):
+            need(isinstance(promotion[key], str) and SHA.fullmatch(promotion[key]) is not None,
+                 f"promotion.{key}: not a full commit SHA")
+        need(promotion["tag_commit"] not in (pin["tag_commit"], pin["built_from"]),
+             "promotion.tag_commit: the release's tag commit or built_from, not the candidate's tag commit")
+        # The candidate's chart, which the release repackaged under its own version: another digest.
+        need(isinstance(promotion["chart_digest"], str) and DIGEST.fullmatch(promotion["chart_digest"]) is not None,
+             "promotion.chart_digest: not sha256:<64 hex>")
+        need(not isinstance(pin["chart"], dict) or promotion["chart_digest"] != pin["chart"].get("digest"),
+             "promotion.chart_digest: the release's own chart digest, not its candidate's")
     need(pin["registry"] == CATALOG_REGISTRY, f"registry: {pin['registry']!r}, not {CATALOG_REGISTRY}")
     if fields(pin["image"], "image", ("repository", "digest", "platform")):
         need(pin["image"]["repository"] == CATALOG_REPOSITORIES["image"],
@@ -296,9 +330,9 @@ def catalog_pin_problems(pin):
         need(pin["chart"]["repository"] == CATALOG_REPOSITORIES["chart"],
              f"chart.repository: {pin['chart']['repository']!r}, not {CATALOG_REPOSITORIES['chart']}")
         need(pin["chart"]["name"] == CATALOG_CHART, f"chart.name: not {CATALOG_CHART}")
-        # A catalog release packages its chart as its candidate's name without the v.
+        # A catalog release packages its chart as its name without the v (a promoted release as its own).
         need(isinstance(candidate, str) and pin["chart"]["version"] == candidate[1:],
-             f"chart.version: {pin['chart']['version']!r}, not the candidate's {str(candidate)[1:]!r}")
+             f"chart.version: {pin['chart']['version']!r}, not the release's {str(candidate)[1:]!r}")
         need(isinstance(pin["chart"]["digest"], str) and DIGEST.fullmatch(pin["chart"]["digest"]) is not None,
              "chart.digest: not sha256:<64 hex>")
     need(type(pin["schema_version"]) is int and pin["schema_version"] > 0,
@@ -319,11 +353,13 @@ def catalog_pin(path=None):
 
 
 def catalog_entry(candidate, pin, image=None, chart=None):
-    """The manifest's catalog: the pin, with the copies of its image and chart that the candidate's
-    release registry holds, under the candidate's tag (by default at the pin's digests)."""
+    """The manifest's catalog: the pin (a release's promotion too), with the copies of its image and
+    chart that the candidate's release registry holds, under the candidate's tag (by default at the
+    pin's digests)."""
+    promotion = {"promotion": pin["promotion"]} if "promotion" in pin else {}
     return {
         "repository": pin["repository"], "candidate": pin["candidate"], "tag_commit": pin["tag_commit"],
-        "built_from": pin["built_from"],
+        "built_from": pin["built_from"], **promotion,
         "image": {"repository": f"{PREFIX}/{CATALOG_IMAGES['catalog']}", "tag": candidate,
                   "digest": image or pin["image"]["digest"], "platform": pin["image"]["platform"]},
         "chart": {"repository": f"{PREFIX}/{CATALOG_IMAGES['catalog-chart']}", "tag": candidate,

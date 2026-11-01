@@ -47,7 +47,7 @@ DWD / DWS 表（分层表，Paimon）
 - `governance`（写在 `LakeSource`、`LakeTable` 里）：负责人、级别、个人数据、保留期与列标签；
 - `LakeErasure`：在所有受管副本里删除一个数据主体。
 
-湖里的每张表都是 Apache Paimon 表，存放在环境的仓库桶里，元数据由平台自带的 REST catalog 服务 **colvenna-catalog** 管理。所有写入与读取都经过 colvenna-catalog：它在服务端原子地提交快照，并按表签发临时的对象存储凭证。colvenna-catalog 是同一系列的独立产品 [Colvenna Catalog](https://github.com/colvenna/colvenna-catalog)，每套环境都装 Colvenna Lake 固定的它的发布版，现在是 v1.0.0-rc.1（[`deploy/images/colvenna-catalog.json`](../../deploy/images/colvenna-catalog.json)）；它的接口、token 与指标在本手册里照常使用，实现设计见它的 [LLD](https://github.com/colvenna/colvenna-catalog/blob/v1.0.0-rc.1/docs/design/colvenna-catalog-lld.md)。
+湖里的每张表都是 Apache Paimon 表，存放在环境的仓库桶里，元数据由平台自带的 REST catalog 服务 **colvenna-catalog** 管理。所有写入与读取都经过 colvenna-catalog：它在服务端原子地提交快照，并按表签发临时的对象存储凭证。colvenna-catalog 是同一系列的独立产品 [Colvenna Catalog](https://github.com/colvenna/colvenna-catalog)，每套环境都装 Colvenna Lake 固定的它的发布版，现在是 v1.0.0（由它的候选 v1.0.0-rc.4 晋升而来，[`deploy/images/colvenna-catalog.json`](../../deploy/images/colvenna-catalog.json)）；它的接口、token 与指标在本手册里照常使用，实现设计见它的 [LLD](https://github.com/colvenna/colvenna-catalog/blob/v1.0.0/docs/design/colvenna-catalog-lld.md)。
 
 ### 1.2 声明与受管命名空间
 

@@ -1,6 +1,6 @@
 # 授权与执行方
 
-本页说明 colvenna-catalog 的访问控制由谁执行、能保证什么、不能保证什么，供平台运维与数据 Owner 使用。授权的设计细节见 [colvenna-catalog LLD 的“授权”一节](https://github.com/colvenna/colvenna-catalog/blob/v1.0.0-rc.1/docs/design/colvenna-catalog-lld.md#授权)：colvenna-catalog 是独立产品 Colvenna Catalog，LLD 在它的仓库里，链接指向 Colvenna Lake 固定的版本。
+本页说明 colvenna-catalog 的访问控制由谁执行、能保证什么、不能保证什么，供平台运维与数据 Owner 使用。授权的设计细节见 [colvenna-catalog LLD 的“授权”一节](https://github.com/colvenna/colvenna-catalog/blob/v1.0.0/docs/design/colvenna-catalog-lld.md#授权)：colvenna-catalog 是独立产品 Colvenna Catalog，LLD 在它的仓库里，链接指向 Colvenna Lake 固定的版本。
 
 ## 身份
 

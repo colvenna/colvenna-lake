@@ -25,7 +25,7 @@ ENV = {"IMAGE": "123456789012.dkr.ecr.us-west-2.amazonaws.com/colvenna-lake-uat/
        "DB_ENDPOINT": "colvennalakeuatfoundation-catalogdatabase.example.us-west-2.rds.amazonaws.com",
        "SERVER_ROLE": "arn:aws:iam::123456789012:role/colvenna-lake-uat-catalog",
        "DATA_ROLE": "arn:aws:iam::123456789012:role/colvenna-lake-uat-catalog-data",
-       "WRITE_NODES": "2", "SHA": "a" * 40, "CATALOG_CANDIDATE": "v1.0.0-rc.1", "CATALOG_BUILT_FROM": "b" * 40,
+       "WRITE_NODES": "2", "SHA": "a" * 40, "CATALOG_CANDIDATE": "v1.0.0", "CATALOG_BUILT_FROM": "b" * 40,
        "COLVENNA_ENV": "uat", "COLVENNA_REGION": "us-west-2"}
 # Every value Colvenna Lake's chart (deploy/helm/colvenna-catalog, removed in #295) had, and what its
 # install gave it.
@@ -81,7 +81,7 @@ class CatalogValuesTest(unittest.TestCase):
     def test_beyond_them_only_the_release_s_names_and_no_load_balancer(self):
         given = pairs(values())
         self.assertEqual({k: v for k, v in given.items() if k not in LAKE_VALUES}, {
-            "podAnnotations.colvenna-catalog/release": "v1.0.0-rc.1",
+            "podAnnotations.colvenna-catalog/release": "v1.0.0",
             "podAnnotations.colvenna-catalog/source-sha": "b" * 40,
             "internalLoadBalancer.enabled": "false"})
 
@@ -166,7 +166,7 @@ class RenderedChartTest(unittest.TestCase):
         self.assertEqual(volumes["db-ca"]["configMap"]["name"], "colvenna-catalog-db-ca")
         notes = pod["metadata"]["annotations"]
         self.assertEqual(notes["colvenna-lake/source-sha"], "a" * 40)
-        self.assertEqual(notes["colvenna-catalog/release"], "v1.0.0-rc.1")
+        self.assertEqual(notes["colvenna-catalog/release"], "v1.0.0")
 
     def test_the_server_s_settings(self):
         data = self.get("ConfigMap", "colvenna-catalog-config")["data"]

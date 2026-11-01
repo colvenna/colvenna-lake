@@ -1,19 +1,25 @@
 {
   "repository": "https://github.com/colvenna/colvenna-catalog",
-  "candidate": "v1.0.0-rc.1",
-  "tag_commit": "698fb185ddb026ae438d9cf7dfadc59d16f40206",
-  "built_from": "2afb93e40a97734f4e3ed3f67c53100fddb01d14",
+  "candidate": "v1.0.0",
+  "tag_commit": "56dc31e216f6fb2faa5635643599b6eb089d675c",
+  "built_from": "77984fb24823acc53e4c1e2d00747d494961552d",
+  "promotion": {
+    "candidate": "v1.0.0-rc.4",
+    "tag_commit": "5a11f1518cea38f61338f9d8891c29a4fc480533",
+    "acceptance": "7afb7ea0d79ef3a9472107a99a01f820e07a92f0",
+    "chart_digest": "sha256:06b5328572d2bc80069a0f7ebd164c5e01f331317d20cf6a376d05e4e53e4449"
+  },
   "registry": "ghcr.io/colvenna",
   "image": {
     "repository": "colvenna-catalog",
-    "digest": "sha256:4aff08682fc587db4f825f96d9734c82d1b03ba720e935882b15552c15f2efd6",
+    "digest": "sha256:47d8834d463ca4b75d82f2c4f1dbb4466fb04cd8fb07c682e1163b3cffcc4a68",
     "platform": "linux/amd64"
   },
   "chart": {
     "repository": "charts/colvenna-catalog",
     "name": "colvenna-catalog",
-    "version": "1.0.0-rc.1",
-    "digest": "sha256:1d45b659313afd7ce02106b884929fff3a3d5e16ca22b4fb2e445e60c91dbcf3"
+    "version": "1.0.0",
+    "digest": "sha256:891ba0366a34b8523ee2eb54dfea1b6cd248e8509e700f983b0d5464dbdb1cbb"
   },
-  "schema_version": 2
+  "schema_version": 4
 }
