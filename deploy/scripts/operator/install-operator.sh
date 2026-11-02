@@ -7,11 +7,59 @@
 #  2. The Helm release, with the managed namespaces (MANAGED_NAMESPACES, comma-separated, default
 #     colvenna-data), each with the ColvennaLakeOperator job role that trusts it: deploy-stack.sh with the same
 #     MANAGED_NAMESPACES first.
-# OPERATOR_TOKEN_TTL (default P90D) sets the token lifetime; rerunning issues a new token only
-# when the Secret is missing.
+# OPERATOR_TOKEN_TTL (default P90D) sets the token lifetime. Every run issues a new token when the
+# Secret is missing, when the catalog refuses the Secret's token, or when that token has fewer than
+# TOKEN_RENEW_DAYS (default 30) days left; else it keeps it (ensure_operator_token).
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=../lib/catalog-admin.sh
 source "$(dirname "$0")/../lib/catalog-admin.sh"
+
+OPERATOR_TOKEN_SECRET=colvenna-operator-catalog-token
+
+# ensure_operator_token: the operator's token Secret holds a token the catalog accepts, with at
+# least TOKEN_RENEW_DAYS (default 30) days left (lib/catalog-admin.sh's token_state). Else (no
+# Secret, a token the catalog refuses, or fewer days left) a new one, issued with the admin token,
+# lasting OPERATOR_TOKEN_TTL and described as the Secret, replaces it, with its id (by which the
+# next run finds its expiry); it is checked to work. The old token is not revoked: it expires by
+# itself. The operator reads the mounted Secret's file on every catalog call, so it takes the new
+# token once the kubelet refreshes the volume, with no restart; meanwhile the old one, renewed with
+# days left, still works. Needs admin_open.
+ensure_operator_token() {
+  local state="missing (no Secret $OPERATOR_TOKEN_SECRET)" status
+  if kubectl -n "$OPERATOR_NAMESPACE" get secret "$OPERATOR_TOKEN_SECRET" >/dev/null 2>&1; then
+    state="$(secret_token_state "$OPERATOR_NAMESPACE" "$OPERATOR_TOKEN_SECRET" "$OPERATOR_PRINCIPAL" \
+      "$OPERATOR_TOKEN_SECRET")"
+  fi
+  echo "operator token: $state"
+  case "$state" in
+    keep*) return 0 ;;
+    missing* | invalid* | renew*) ;;
+    *)
+      echo "Unexpected state of the operator token, $state: nothing issued" >&2
+      return 1
+      ;;
+  esac
+  # The principal, an admin, unless it is there (a restore of the metadata database loses one
+  # created later).
+  status="$(curl -s -o "$ADMIN_DIR/principal.out" -w '%{http_code}' --cacert "$ADMIN_DIR/ca.crt" \
+    -K "$ADMIN_DIR/curlrc" -H 'Content-Type: application/json' \
+    --data "{\"name\":\"$OPERATOR_PRINCIPAL\",\"description\":\"colvenna-operator\",\"admin\":true}" \
+    "https://localhost:$ADMIN_PORT/colvenna/admin/v1/principals")"
+  if [[ "$status" != 200 && "$status" != 409 ]]; then
+    echo "Creating $OPERATOR_PRINCIPAL failed with $status: $(cat "$ADMIN_DIR/principal.out")" >&2
+    return 1
+  fi
+  issue_secret_token "$OPERATOR_PRINCIPAL" "$OPERATOR_NAMESPACE" "$OPERATOR_TOKEN_SECRET" \
+    "${OPERATOR_TOKEN_TTL:-P90D}"
+  state="$(secret_token_state "$OPERATOR_NAMESPACE" "$OPERATOR_TOKEN_SECRET" "$OPERATOR_PRINCIPAL" \
+    "$OPERATOR_TOKEN_SECRET")"
+  if [[ "$state" == invalid* ]]; then
+    echo "colvenna-catalog refuses the operator token just issued, $state: is $OPERATOR_PRINCIPAL disabled?" >&2
+    return 1
+  fi
+  echo "operator token: new ${state#* }"
+}
+
 assert_account
 ensure_kubeconfig
 sha="$(committed_sha)"
@@ -43,24 +91,7 @@ kubectl apply --server-side --force-conflicts -f "$REPO_DIR/deploy/helm/colvenna
 
 admin_open
 trap admin_close EXIT
-if ! kubectl -n "$OPERATOR_NAMESPACE" get secret colvenna-operator-catalog-token >/dev/null 2>&1; then
-  status="$(curl -s -o "$ADMIN_DIR/principal.out" -w '%{http_code}' --cacert "$ADMIN_DIR/ca.crt" \
-    -K "$ADMIN_DIR/curlrc" -H 'Content-Type: application/json' \
-    --data "{\"name\":\"$OPERATOR_PRINCIPAL\",\"description\":\"colvenna-operator\",\"admin\":true}" \
-    "https://localhost:$ADMIN_PORT/colvenna/admin/v1/principals")"
-  if [[ "$status" != 200 && "$status" != 409 ]]; then
-    echo "Creating $OPERATOR_PRINCIPAL failed with $status: $(cat "$ADMIN_DIR/principal.out")" >&2
-    exit 1
-  fi
-  token="$ADMIN_DIR/operator.token"
-  admin_call POST "/colvenna/admin/v1/principals/$OPERATOR_PRINCIPAL/tokens" \
-    "{\"ttl\":\"${OPERATOR_TOKEN_TTL:-P90D}\",\"description\":\"colvenna-operator-catalog-token\"}" \
-    | python3 -c 'import json,sys; sys.stdout.write(json.load(sys.stdin)["token"])' >"$token"
-  [[ -s "$token" ]] || { echo "Could not issue the operator token" >&2; exit 1; }
-  kubectl -n "$OPERATOR_NAMESPACE" create secret generic colvenna-operator-catalog-token \
-    --from-file=token="$token" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  rm -f "$token"
-fi
+ensure_operator_token
 GRANT_PURPOSE="colvenna-operator manages declared sources" GRANT_APPROVER=requester \
   GRANT_APPROVAL=issue-24 GRANT_DAYS=90 ensure_grant "$OPERATOR_PRINCIPAL" CATALOG - - MANAGE
 ca="$ADMIN_DIR/ca.crt"
