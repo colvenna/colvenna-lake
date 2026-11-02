@@ -319,7 +319,7 @@ COLVENNA_ENV=uat tests/fixtures/kafka/dev-kafka.sh purge <证据目录> --yes   
 - 每个脚本都会收敛到新提交要装成的样子；
 - `install-operator.sh` 每次都以 server-side apply 更新 CRD；
 - 平台的两条 catalog 级 `MANAGE` grant 每次都按条款核对：`catalog` 一步给平台身份 `admin` 的（有效期 7 天），`operator` 一步给 `colvenna-operator` 的（90 天）。已过期、剩余有效期不到有效期的一半（`admin` 3.5 天，Operator 45 天）、到期比条款允许的晚一天以上或列不同时，删掉重建，其余保留。两次安装之间不续期：`admin` 的 grant 过期之后，平台身份访问库和表都得到 403，重跑 `catalog` 一步即可续上（[#22](https://github.com/colvenna/colvenna-lake/issues/22)）。两个 token 每次运行这两步时也核对：Secret 不存在或 token 被 catalog 拒绝时重签，剩余有效期不足 `TOKEN_RENEW_DAYS`（默认 30 天）时续签，规则见下文"平台的两个 catalog token"（[#23](https://github.com/colvenna/colvenna-lake/issues/23)）；
-- catalog 的私有 CA 证书已过期或快到期时，`catalog` 一步用同一个密钥重签，规则见下文"catalog 的两张证书"（[#24](https://github.com/colvenna/colvenna-lake/issues/24)）；
+- catalog 的私有 CA 证书已过期或快到期时，`catalog` 一步用同一个密钥重签，规则见下文"catalog 的 CA 与服务端证书"（[#24](https://github.com/colvenna/colvenna-lake/issues/24)）；
 - colvenna-catalog 也可以单独升级到当前提交固定的 Colvenna Catalog 版本：`COLVENNA_ENV=uat deploy/install.sh --only catalog`（catalog 公开之前另给 `COLVENNA_CATALOG_REGISTRY=<私有发布仓库>`）；按候选安装的环境用 `install.sh --release <候选> --only catalog`。这一步先取发布版并核对（`fetch-catalog.sh`），再由 `install-catalog.sh` 每次给出全部取值，不沿用 Helm release 里存着的旧取值：[#5](https://github.com/colvenna/colvenna-lake/issues/5) 之前装的环境存的取值里没有客户端与监控命名空间的标签（那是 Colvenna Lake 原来的 chart 的默认值），沿用的话 catalog 的 chart 会换上自己的默认标签，NetworkPolicy 随之拒绝 Colvenna Lake 的全部客户端与 Prometheus。
 - **升级到一个新的候选**：检出新候选的 tag，`COLVENNA_ENV=uat deploy/install.sh --release <新候选> [--fixtures]`。各步照常收敛，镜像从发布仓库复制，不构建。同一个提交上，一套环境只能用一种方式安装：`deploy/.state/<环境>/install-mode` 记着上一次的方式，在同一提交上换一种方式会被拒绝；照上一次的方式重跑（带或不带 `--release <候选>`），或检出别的提交。`uninstall.sh` 拆完时连同这个记录一起删掉，之后可以用任一种方式从零安装。
 - **改名之前装的环境**：查询引擎镜像改名（#258）与技术标识改名（#271）之前装的环境都是产品旧名字的，不能升级到现在的提交：先在它安装时的提交上卸载，再从零安装。
@@ -339,15 +339,15 @@ COLVENNA_ENV=uat tests/fixtures/kafka/dev-kafka.sh purge <证据目录> --yes   
 
 两次运行之间没有别的东西续签：至少每 30 天（`TOKEN_RENEW_DAYS`）运行一次 `install.sh`，或依次运行 `--only catalog` 与 `--only operator`（Operator 的 token 要用管理员 token 签发），这两个 token 就不会过期。过期了，下一次运行也会重签，但 Operator 在那之前访问不了 catalog。要立即换新，以不小于有效期天数的 `TOKEN_RENEW_DAYS` 运行这两步，例如 `TOKEN_RENEW_DAYS=90 COLVENNA_ENV=uat deploy/install.sh --only catalog`，再以同样的设置运行 `--only operator`。
 
-**catalog 的两张证书。** catalog 的服务端证书有效 397 天，每次运行 `catalog` 一步都重签；Polaris 的证书也由 catalog 的 CA 签发，397 天，每次运行 `polaris` 一步重签。私有 CA 证书（`colvenna-catalog` 命名空间的 Secret `colvenna-catalog-ca-key`）有效 825 天，它的密钥只在第一次安装时生成，之后不变。`catalog` 一步每次都核对 CA 证书，结果与到期时间记在这一步证据目录的 `ca-certificate.txt` 里：
+**catalog 的 CA 与服务端证书。** catalog 的服务端证书有效 397 天，每次运行 `catalog` 一步都重签；Polaris 的证书也由 catalog 的 CA 签发，397 天，每次运行 `polaris` 一步重签。私有 CA 证书（`colvenna-catalog` 命名空间的 Secret `colvenna-catalog-ca-key`）有效 825 天，它的密钥只在第一次安装时生成，之后不变。`catalog` 一步每次都核对 CA 证书，结果与到期时间记在这一步证据目录的 `ca-certificate.txt` 里：
 
-- 已过期，或剩余有效期不到 `CA_RENEW_DAYS`（默认 90 天）：用同一个密钥、同一个名称与密钥标识重签一张，有效 825 天，序列号是新的，存回同一个 Secret，密钥不变。新旧两张 CA 证书都能校验对方签发的服务端证书，所以手里还是旧 CA 证书的客户端，在旧证书过期之前照常连得上，信任库不必与重签同时更换。
+- 已过期，或剩余有效期不到 `CA_RENEW_DAYS`（默认 90 天）：用同一个密钥、同一个名称与密钥标识重签一张，有效 825 天，序列号是新的，存回同一个 Secret，密钥不变。服务端证书以授权密钥标识（[RFC 5280](https://www.rfc-editor.org/rfc/rfc5280) 的 Authority Key Identifier 扩展）指向这个密钥，所以新旧两张 CA 证书都能校验对方签发的服务端证书：手里还是旧 CA 证书的客户端，在旧证书过期之前照常连得上，信任库不必与重签同时更换。这一点用 OpenSSL 校验过（离线测试 `tests/acceptance/test_catalog_ca.py`），Java 21 的客户端手工试过一次（信任库里只有旧 CA 证书，握手成功），Doris 与其他客户端没有验证。这个脚本建的 CA 证书都带密钥标识；不带的，重签之前签发的服务端证书只认旧证书。
 - 否则保留。
 
-同一次安装里，后面的步骤都从这个 Secret 取 CA 证书：`doris` 的信任库、`operator` 交给 Operator 与受管命名空间的 `colvenna-catalog-ca`（Operator 随之重启）、`polaris` 的证书、`verify` 的检查；验收测试在每次运行时把它放进引擎命名空间。证书在用到它的进程启动时读入：
+同一次安装里，后面的步骤都从这个 Secret 取 CA 证书：`doris` 的信任库、`operator` 交给 Operator 与受管命名空间的 `colvenna-catalog-ca`（Operator 随之重启）、`polaris` 的证书、`verify` 的检查；验收测试在每次运行时把它放进引擎命名空间。只运行 `--only catalog` 时，这些副本要等下一次完整安装，或依次运行 `--only doris`、`--only operator`、`--only polaris` 才换上。证书在用到它的进程启动时读入：
 
-- catalog 与 Polaris 的 Pod 在新提交上安装时滚动重启；catalog 的 Pod 在 CA 证书重签时也滚动重启（Pod 模板上有 CA 证书的指纹），立即提供新的证书链。在同一个提交上重跑，新签的服务端证书要到 Pod 下一次重启才用上。
-- 启动时读入信任库的 Pod（Doris 的 FE 与 BE、Flink 作业）要到下一次重启才用上新的 CA 证书；平台之外拿了 `ca.crt` 的读端（[用户手册](user.md)第 9.3 节）要自己更换。
+- catalog 的服务端在启动时读入它的密钥库（服务端证书与 CA 证书链，Colvenna Catalog v1.0.0 的 [`RestServer`](https://github.com/colvenna/colvenna-catalog/blob/v1.0.0/src/main/java/com/colvenna/catalog/http/RestServer.java)）。catalog 与 Polaris 的 Pod 在新提交上安装时滚动重启；catalog 的 Pod 在 CA 证书重签时也滚动重启（Pod 模板上有 CA 证书的指纹），立即提供新的证书链。在同一个提交上重跑，新签的服务端证书要到 Pod 下一次重启才用上；Polaris 运行中会不会重新读它的证书没有验证，同样按重启处理。
+- Flink 作业的信任库由 init 容器在 Pod 启动时生成（[`FlinkJobs.truststore`](../../colvenna-operator/src/main/java/com/colvenna/lake/operator/flink/FlinkJobs.java)），要到作业的 Pod 下一次重启才用上新的 CA 证书；Doris 的 FE 与 BE 以 JVM 参数 `javax.net.ssl.trustStore` 读 Secret 里的信任库，运行中会不会重新读没有验证，按下一次重启才用上处理；平台之外拿了 `ca.crt` 的读端（[用户手册](user.md)第 9.3 节）要自己更换。
 
 所以服务端证书在上一次运行这两步之后 397 天过期：至少每 397 天在新提交上重跑一次安装，或者重跑之后重启这两个服务（`kubectl -n colvenna-catalog rollout restart deploy/colvenna-catalog`、`kubectl -n colvenna-polaris rollout restart deploy/polaris`）。CA 证书剩不到 90 天时重跑一次安装，然后在旧证书过期之前重启上面那些 Pod、换掉平台之外的副本。CA 证书过期之后才重跑的，在换上新证书之前，客户端可能已经连不上。
 

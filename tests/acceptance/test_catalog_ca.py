@@ -103,7 +103,7 @@ def field(cert, *option):
     return openssl("x509", "-in", cert, "-noout", *option).stdout
 
 
-def name(cert, which):
+def dn(cert, which):
     """The certificate's subject or issuer, attribute by attribute, with each one's string type."""
     return field(cert, "-" + which, "-nameopt", "multiline,show_type").split("\n", 1)[1]
 
@@ -230,8 +230,8 @@ kubectl() { python3 %s %s %s "$@"; }
             self.assertEqual(self.stored("ca.crt"), f.read(), "the new certificate is stored")
         with open(old, "rb") as f:
             self.assertNotEqual(self.stored("ca.crt"), f.read())
-        self.assertEqual(name(new, "subject"), name(old, "subject"))
-        self.assertEqual(name(new, "issuer"), name(old, "subject"))
+        self.assertEqual(dn(new, "subject"), dn(old, "subject"))
+        self.assertEqual(dn(new, "issuer"), dn(old, "subject"))
         self.assertEqual(field(new, "-pubkey"), field(old, "-pubkey"))
         self.assertEqual(key_id(new, "subjectKeyIdentifier"), key_id(old, "subjectKeyIdentifier"))
         self.assertEqual(key_id(new, "authorityKeyIdentifier"), key_id(old, "subjectKeyIdentifier"))
@@ -254,7 +254,7 @@ kubectl() { python3 %s %s %s "$@"; }
         for leaf in (self.sign_server(), self.sign_polaris()):
             with self.subTest(leaf=os.path.basename(leaf)):
                 self.assertEqual(key_id(leaf, "authorityKeyIdentifier"), ski)
-                self.assertEqual(name(leaf, "issuer"), name(old, "subject"))
+                self.assertEqual(dn(leaf, "issuer"), dn(old, "subject"))
                 for ca, extra in ((new, ()), (old, time), (old, time + ("-untrusted", new))):
                     run = self.verifies(ca, leaf, *extra)
                     self.assertEqual(run.returncode, 0, (ca, extra, run.stdout, run.stderr))
@@ -307,6 +307,20 @@ kubectl() { python3 %s %s %s "$@"; }
         self.store(key, cert)
         self.assertRegex(self.ensure(), r"^colvenna-catalog CA: kept, ")
         self.assertRegex(self.ensure({"CA_RENEW_DAYS": "120"}), r"^colvenna-catalog CA: issued anew ")
+
+    def test_the_margin_is_a_whole_number_of_days(self):
+        key, cert = self.make_ca(-30, 795)
+        self.store(key, cert)
+        marker = self.path("evaluated")
+        for value in ("-5", "1.5", "30d", "x[$(touch %s)]" % marker):
+            with self.subTest(value=value):
+                run = self.bash('ensure_ca "$work"\n', {"CA_RENEW_DAYS": value})
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn("CA_RENEW_DAYS is a whole number of days", run.stderr)
+                self.assertFalse(os.path.exists(marker), "the value is never evaluated")
+        self.assertRegex(self.ensure({"CA_RENEW_DAYS": "090"}), r"^colvenna-catalog CA: kept, ")
+        with open(cert, "rb") as f:
+            self.assertEqual(self.stored("ca.crt"), f.read())
 
     def test_a_reissued_ca_is_then_kept(self):
         key, old = self.make_ca(-826, -1)

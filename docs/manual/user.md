@@ -1494,7 +1494,7 @@ spec:
 
 **读端的连接。**
 
-- 读端的命名空间要带标签 `colvenna-lake.io/iceberg-client=true`；Polaris 的证书由 colvenna-catalog 的 CA 签发。平台管理员从 Secret `colvenna-catalog/colvenna-catalog-ca-key` 取出 `ca.crt` 交给读端；这个 Secret 里还有 CA 的私钥 `ca.key`，不要整个复制。CA 证书快到期时，重跑安装会用同一个密钥重签一张（[安装部署手册](install.md)第 7 节）：读端手里的旧证书在它过期之前仍然有效，在那之前换上新的 `ca.crt`。
+- 读端的命名空间要带标签 `colvenna-lake.io/iceberg-client=true`；Polaris 的证书由 colvenna-catalog 的 CA 签发。平台管理员从 Secret `colvenna-catalog/colvenna-catalog-ca-key` 取出 `ca.crt` 交给读端；这个 Secret 里还有 CA 的私钥 `ca.key`，不要整个复制。CA 证书快到期时，重跑安装会用同一个密钥、同一个名称重签一张（[安装部署手册](install.md)第 7 节）；在旧证书过期之前给读端换上新的 `ca.crt`。
 - 端点 `https://polaris.colvenna-polaris.svc:8181/api/catalog`，warehouse `colvenna_open`，OAuth2 client credentials，scope `PRINCIPAL_ROLE:ALL`，请求头 `X-Iceberg-Access-Delegation: vended-credentials`。
 - 读端不需要自己的 AWS 身份。Polaris 按表签发只读凭证，15 分钟有效，范围只到这张表的目录。
 

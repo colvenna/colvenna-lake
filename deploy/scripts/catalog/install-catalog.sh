@@ -17,7 +17,7 @@
 # namespaces, are refused. It also upgrades the catalog to the release a later commit pins (install.sh
 # --only catalog, after fetch-catalog.sh): every value is given anew each run, none reused from what
 # the Helm release stored.
-# Usage: [TOKEN_RENEW_DAYS=<days>] install-catalog.sh <evidence-dir>
+# Usage: [TOKEN_RENEW_DAYS=<days>] [CA_RENEW_DAYS=<days>] install-catalog.sh <evidence-dir>
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=../lib/catalog-admin.sh
 source "$(dirname "$0")/../lib/catalog-admin.sh"
@@ -134,16 +134,23 @@ ensure_admin_token() {
 # reissue_ca <key> <certificate> <out>: the CA certificate issued anew into <out>, valid 825 days from
 # now: the same key, subject and subject key identifier (so a server certificate either one signs
 # verifies against the other, the authority key identifier naming that key), a new serial number.
+# Every CA certificate this script made has a subject key identifier; one without gets one by hash,
+# and the server certificates signed before then name the old certificate by issuer and serial, so
+# verify against it alone.
 reissue_ca() {
   local key="$1" cert="$2" out="$3" ski
   ski="$(openssl x509 -in "$cert" -noout -ext subjectKeyIdentifier 2>/dev/null | sed -n '2s/^ *//p')"
   # The request carries the certificate's subject as it is encoded, not as retyped.
-  openssl x509 -x509toreq -in "$cert" -key "$key" -out "$out.csr" 2>/dev/null
-  openssl x509 -req -in "$out.csr" -key "$key" -days 825 -set_serial "0x$(openssl rand -hex 16)" \
+  openssl x509 -x509toreq -in "$cert" -key "$key" -out "$out.csr"
+  # x509 -req reports on stderr even when it succeeds: shown only when it fails.
+  if ! openssl x509 -req -in "$out.csr" -key "$key" -days 825 -set_serial "0x$(openssl rand -hex 16)" \
     -extfile <(printf '%s\n' 'basicConstraints = critical, CA:TRUE' \
       'keyUsage = critical, keyCertSign, cRLSign' "subjectKeyIdentifier = ${ski:-hash}" \
-      'authorityKeyIdentifier = keyid:always') -out "$out" 2>/dev/null
-  rm -f "$out.csr"
+      'authorityKeyIdentifier = keyid:always') -out "$out" 2>"$out.err"; then
+    cat "$out.err" >&2
+    return 1
+  fi
+  rm -f "$out.csr" "$out.err"
 }
 
 # ensure_ca <dir>: the private CA's key and certificate in <dir>/ca.key and <dir>/ca.crt, as the
@@ -153,7 +160,13 @@ reissue_ca() {
 # holding the old certificate verify the server certificates the new one signs until the old one
 # expires. Prints what it did.
 ensure_ca() {
-  local dir="$1" renew="$((${CA_RENEW_DAYS:-90} * 86400))" before
+  local dir="$1" renew before
+  # A whole number of days, as TOKEN_RENEW_DAYS: arithmetic would evaluate anything else.
+  if [[ ! "${CA_RENEW_DAYS:-90}" =~ ^[0-9]+$ ]]; then
+    echo "CA_RENEW_DAYS is a whole number of days, not '${CA_RENEW_DAYS}'" >&2
+    return 1
+  fi
+  renew="$((10#${CA_RENEW_DAYS:-90} * 86400))"
   if ! kubectl -n "$CATALOG_NAMESPACE" get secret colvenna-catalog-ca-key >/dev/null 2>&1; then
     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 825 \
       -subj "/CN=colvenna-catalog private CA" -keyout "$dir/ca.key" -out "$dir/ca.crt" 2>/dev/null
