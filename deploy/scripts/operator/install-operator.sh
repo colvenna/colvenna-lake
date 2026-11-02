@@ -2,7 +2,8 @@
 # Installs colvenna-operator from the images build-images.sh recorded for the current SHA.
 #  1. The operator's own colvenna-catalog identity: an admin principal (it creates the identities of
 #     the sources it manages) with catalog-wide MANAGE (it creates their databases and reads their
-#     tables to reconcile them). Its token lands in a Secret in the operator namespace.
+#     tables to reconcile them), for 90 days: every run grants it anew once it has expired or is about
+#     to (ensure_grant, #22). Its token lands in a Secret in the operator namespace.
 #  2. The Helm release, with the managed namespaces (MANAGED_NAMESPACES, comma-separated, default
 #     colvenna-data), each with the ColvennaLakeOperator job role that trusts it: deploy-stack.sh with the same
 #     MANAGED_NAMESPACES first.

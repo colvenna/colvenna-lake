@@ -92,11 +92,23 @@ ensure_principal_token() {
   rm -f "$token"
 }
 
+# post_grant <json>: POSTs a grant, leaves the answer in $ADMIN_DIR/grant.out and prints its HTTP status.
+post_grant() {
+  curl -s -o "$ADMIN_DIR/grant.out" -w '%{http_code}' --cacert "$ADMIN_DIR/ca.crt" \
+    -K "$ADMIN_DIR/curlrc" -H 'Content-Type: application/json' --data "$1" \
+    "https://localhost:$ADMIN_PORT/colvenna/admin/v1/grants"
+}
+
 # ensure_grant <principal> <scope> <database|-> <object|-> <privilege> [ALLOW|DENY] [<columns,csv>]
-# Grants under the acceptance terms; an identical existing grant is kept. GRANT_PURPOSE,
-# GRANT_APPROVER, GRANT_APPROVAL and GRANT_DAYS override the terms.
+# Grants under the acceptance terms, expiring GRANT_DAYS (default 7) days from now; GRANT_PURPOSE,
+# GRANT_APPROVER, GRANT_APPROVAL and GRANT_DAYS override the terms. The catalog keeps one grant per
+# principal, scope, database, object, privilege and effect, expired or not, and answers 409 to
+# another one (#22). So an identical grant is kept only while it fits the terms; otherwise it is
+# deleted and granted anew under them. It no longer fits once it has expired, expires within
+# GRANT_RENEW_DAYS (default half the term in whole days, at least one), expires more than a day
+# later than the term allows, or names other columns.
 ensure_grant() {
-  local body
+  local body status verdict id reason renewed
   body="$(python3 - "$@" <<'PY'
 import datetime, json, os, sys
 principal, scope, database, obj, privilege = sys.argv[1:6]
@@ -118,14 +130,86 @@ if columns:
 print(json.dumps(grant))
 PY
 )"
-  local status
-  status="$(curl -s -o "$ADMIN_DIR/grant.out" -w '%{http_code}' --cacert "$ADMIN_DIR/ca.crt" \
-    -K "$ADMIN_DIR/curlrc" -H 'Content-Type: application/json' --data "$body" \
-    "https://localhost:$ADMIN_PORT/colvenna/admin/v1/grants")"
-  if [[ "$status" != 200 && "$status" != 409 ]]; then
+  status="$(post_grant "$body")"
+  if [[ "$status" == 200 ]]; then
+    return 0
+  fi
+  if [[ "$status" != 409 ]]; then
     echo "Grant $* failed with $status: $(cat "$ADMIN_DIR/grant.out")" >&2
     return 1
   fi
+  if ! admin_call GET "/colvenna/admin/v1/grants?principal=$1" >"$ADMIN_DIR/grants.json"; then
+    echo "Grant $* answered 409, and the grants of $1 could not be read" >&2
+    return 1
+  fi
+  # keep, missing, or renew <id> <why>.
+  verdict="$(python3 - "$body" "$ADMIN_DIR/grants.json" <<'PY'
+import datetime, json, os, sys
+want = json.loads(sys.argv[1])
+with open(sys.argv[2]) as f:
+    grants = json.load(f)["grants"]
+key = ("principal", "scope", "database", "object", "privilege", "effect")
+same = [g for g in grants if all(g.get(k) == want.get(k) for k in key)]
+if not same:
+    print("missing")
+    sys.exit()
+grant = same[0]
+utc = datetime.timezone.utc
+
+
+def instant(text):
+    # As the catalog writes it (Java's Instant): seconds, then 0, 3, 6 or 9 decimals, then Z.
+    whole, _, fraction = text.rstrip("Z").partition(".")
+    return (datetime.datetime.strptime(whole, "%Y-%m-%dT%H:%M:%S").replace(tzinfo=utc)
+            + datetime.timedelta(microseconds=int((fraction + "000000")[:6])))
+
+
+def columns(g):
+    return ",".join(sorted(g["columns"])) if g.get("columns") is not None else "all"
+
+
+days = int(os.environ.get("GRANT_DAYS", "7"))
+margin = int(os.environ.get("GRANT_RENEW_DAYS") or max(1, days // 2))
+now = datetime.datetime.now(utc)
+expires = instant(grant["expiresAt"])
+if expires <= now:
+    why = f"expired {grant['expiresAt']}"
+elif expires < now + datetime.timedelta(days=margin):
+    why = f"expires {grant['expiresAt']}, within the {margin}-day renewal margin"
+elif expires > now + datetime.timedelta(days=days + 1):
+    why = f"expires {grant['expiresAt']}, later than a {days}-day term allows"
+elif columns(grant) != columns(want):
+    why = f"names columns {columns(grant)}, not {columns(want)}"
+else:
+    print("keep")
+    sys.exit()
+print("renew", grant["id"], why)
+PY
+)" || {
+    echo "Grant $* answered 409, and the grants of $1 could not be checked" >&2
+    return 1
+  }
+  case "$verdict" in
+    keep) return 0 ;;
+    missing)
+      echo "Grant $* answered 409, but $1 has no identical grant" >&2
+      return 1
+      ;;
+  esac
+  read -r _ id reason <<<"$verdict"
+  if ! admin_call DELETE "/colvenna/admin/v1/grants/$id" >/dev/null; then
+    echo "Grant $*: grant $id $reason, and could not be deleted" >&2
+    return 1
+  fi
+  status="$(post_grant "$body")"
+  if [[ "$status" != 200 ]]; then
+    echo "Grant $* failed with $status after grant $id ($reason) was deleted: $(cat "$ADMIN_DIR/grant.out")" >&2
+    return 1
+  fi
+  # The new grant's id, as the catalog answered, and its expiry, as granted.
+  renewed="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"], json.loads(sys.argv[2])["expiresAt"])' \
+    "$ADMIN_DIR/grant.out" "$body" 2>/dev/null)" || renewed="? ?"
+  echo "Grant $*: grant $id $reason; replaced by grant ${renewed% *}, expiring ${renewed#* }" >&2
 }
 
 # revoke_principal <principal>: deletes every grant of the principal and revokes its tokens, so an

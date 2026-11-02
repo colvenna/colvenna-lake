@@ -318,6 +318,7 @@ COLVENNA_ENV=uat tests/fixtures/kafka/dev-kafka.sh purge <证据目录> --yes   
 
 - 每个脚本都会收敛到新提交要装成的样子；
 - `install-operator.sh` 每次都以 server-side apply 更新 CRD；
+- 平台的两条 catalog 级 `MANAGE` grant 每次都按条款核对：`catalog` 一步给平台身份 `admin` 的（有效期 7 天），`operator` 一步给 `colvenna-operator` 的（90 天）。已过期、剩余有效期不到有效期天数的一半（向下取整：`admin` 3 天，Operator 45 天）、到期比条款允许的晚一天以上或列不同时，删掉重建，其余保留。两次安装之间不续期：`admin` 的 grant 过期之后，平台身份访问库和表都得到 403，重跑 `catalog` 一步即可续上（[#22](https://github.com/colvenna/colvenna-lake/issues/22)）。两个 token 只在各自的 Secret 不存在时签发，重跑不续签（[#23](https://github.com/colvenna/colvenna-lake/issues/23)）；
 - colvenna-catalog 也可以单独升级到当前提交固定的 Colvenna Catalog 版本：`COLVENNA_ENV=uat deploy/install.sh --only catalog`（catalog 公开之前另给 `COLVENNA_CATALOG_REGISTRY=<私有发布仓库>`）；按候选安装的环境用 `install.sh --release <候选> --only catalog`。这一步先取发布版并核对（`fetch-catalog.sh`），再由 `install-catalog.sh` 每次给出全部取值，不沿用 Helm release 里存着的旧取值：[#5](https://github.com/colvenna/colvenna-lake/issues/5) 之前装的环境存的取值里没有客户端与监控命名空间的标签（那是 Colvenna Lake 原来的 chart 的默认值），沿用的话 catalog 的 chart 会换上自己的默认标签，NetworkPolicy 随之拒绝 Colvenna Lake 的全部客户端与 Prometheus。
 - **升级到一个新的候选**：检出新候选的 tag，`COLVENNA_ENV=uat deploy/install.sh --release <新候选> [--fixtures]`。各步照常收敛，镜像从发布仓库复制，不构建。同一个提交上，一套环境只能用一种方式安装：`deploy/.state/<环境>/install-mode` 记着上一次的方式，在同一提交上换一种方式会被拒绝；照上一次的方式重跑（带或不带 `--release <候选>`），或检出别的提交。`uninstall.sh` 拆完时连同这个记录一起删掉，之后可以用任一种方式从零安装。
 - **改名之前装的环境**：查询引擎镜像改名（#258）与技术标识改名（#271）之前装的环境都是产品旧名字的，不能升级到现在的提交：先在它安装时的提交上卸载，再从零安装。
