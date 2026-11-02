@@ -123,9 +123,10 @@ PY
 # commit <message>: commits the scratch worktree as it is. It shares the repository's hooks, and a
 # clone with the pre-commit hooks installed (CONTRIBUTING.md) would hold these deliberately broken
 # trees to them: the commits skip them (#18), the check being install.sh's refusal, not the hooks'.
+# Nor are they signed, whatever the caller's git configuration asks.
 commit() {
   git -C "$scratch" -c user.name=release-refusals -c user.email=release-refusals@colvenna-lake.invalid \
-    commit --quiet --no-verify -am "$1"
+    -c commit.gpgsign=false commit --quiet --no-verify -am "$1"
 }
 # refused <case> <expected text> <install.sh arguments...>: runs the install, which must fail with
 # that text before recording anything; then the scratch worktree goes back to the base commit.
