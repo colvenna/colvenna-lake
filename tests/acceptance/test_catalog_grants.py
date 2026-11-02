@@ -5,8 +5,10 @@ privilege and effect, expired or not, and answers 409 to another one; it answers
 a deletion, 404 to the deletion of a grant it does not have, and lists a principal's grants, expired
 ones included. An install whose identical grant has expired, or expires within the renewal margin,
 later than the term allows, or with other columns, has it deleted and granted anew; one that fits the
-terms is kept. install-catalog.sh's grant of the platform identity admin, and install-operator.sh's of
-the operator's identity, are run as the scripts have them."""
+terms is kept. Another run renewing the same grant at the same time can delete it first, or grant it
+anew first: what it granted is kept if it fits the terms. install-catalog.sh's grant of the platform
+identity admin, and install-operator.sh's of the operator's identity, are run as the scripts have
+them."""
 import datetime
 import json
 import os
@@ -23,10 +25,11 @@ INSTALL_OPERATOR = os.path.join(SCRIPTS, "operator", "install-operator.sh")
 UTC = datetime.timezone.utc
 GRANTS = "/colvenna/admin/v1/grants"
 
-# The stand-in for curl: the arguments catalog-admin.sh gives it (post_grant's -o/-w form, admin_call's
-# -X/--fail-with-body form), the store, and a log of the requests. A store's "force" maps a request
+# The stand-in for curl: the arguments catalog-admin.sh gives it (admin_status's -o/-w form, admin_call's
+# --fail-with-body form), the store, and a log of the requests. A store's "force" maps a request
 # ("POST /colvenna/admin/v1/grants") to the statuses its next calls answer instead, null for the
-# store's own answer.
+# store's own answer. Its "after" maps a request to what another run does right after each of its next
+# calls, null for nothing: {"delete": <id>} and {"add": <grant>}.
 CURL = r'''
 import datetime, json, sys, urllib.parse
 store_path, log_path, *args = sys.argv[1:]
@@ -106,6 +109,13 @@ if status is None:
     status, body = answer()
 else:
     body = {"message": "forced", "code": status}
+after = store.get("after", {}).get(f"{method} {path}", [])
+other = after.pop(0) if after else None
+if other and "delete" in other:
+    store["grants"] = [g for g in store["grants"] if g["id"] != other["delete"]]
+if other and "add" in other:
+    store["grants"].append(other["add"])
+    store["next"] = max(store["next"], other["add"]["id"])
 with open(store_path, "w") as f:
     json.dump(store, f)
 text = "" if body is None else json.dumps(body)
@@ -162,10 +172,10 @@ class EnsureGrantTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def seed(self, grants, force=None):
+    def seed(self, grants, force=None, after=None):
         with open(self.store, "w") as f:
             json.dump({"next": max([g["id"] for g in grants], default=0), "grants": grants,
-                       "force": force or {}}, f)
+                       "force": force or {}, "after": after or {}}, f)
         open(self.log, "w").close()
 
     def grants(self):
@@ -182,12 +192,9 @@ class EnsureGrantTest(unittest.TestCase):
 ADMIN_DIR=%s ADMIN_PORT=8181 OPERATOR_PRINCIPAL=colvenna-operator
 curl() { python3 %s %s %s "$@"; }
 %s
-%s
-%s
-%s
-%s""" % (self.tmp.name, self.curl, self.store, self.log, function(LIBRARY, "admin_call"),
-         function(LIBRARY, "post_grant"), function(LIBRARY, "ensure_grant"),
-         function(LIBRARY, "ensure_flow_grants"), step)
+%s""" % (self.tmp.name, self.curl, self.store, self.log,
+         "".join(function(LIBRARY, name) for name in ("admin_call", "admin_status", "grant_verdict",
+                                                      "ensure_grant", "ensure_flow_grants")), step)
         clean = {k: v for k, v in os.environ.items() if not k.startswith(("GRANT_", "FLOW_GRANTS"))}
         run = subprocess.run(["bash", "-c", script], env={**clean, **(env or {})}, capture_output=True,
                              text=True, timeout=60)
@@ -309,6 +316,58 @@ curl() { python3 %s %s %s "$@"; }
         status, err = self.run_step("ensure_grant admin CATALOG - - MANAGE\n")
         self.assertNotEqual(status, 0)
         self.assertIn("Grant admin CATALOG - - MANAGE failed with 500 after grant 7 (expired ", err)
+
+    def test_a_grant_another_run_deleted_first_is_granted_anew(self):
+        # Between this run's reading and its DELETE, another run deleted grant 7: the DELETE answers 404.
+        self.seed([grant(7, "admin", "CATALOG", "MANAGE", at(days=-1))],
+                  after={f"GET {GRANTS}": [{"delete": 7}]})
+        status, err = self.run_step("ensure_grant admin CATALOG - - MANAGE\n")
+        self.assertEqual(status, 0, err)
+        self.assertEqual(self.requests(), [f"POST {GRANTS}", f"GET {GRANTS}?principal=admin",
+                                           f"DELETE {GRANTS}/7", f"POST {GRANTS}"])
+        [g] = self.grants()
+        self.assertEqual(g["id"], 8)
+        self.assertFreshFor(g, 7)
+        self.assertRegex(err, r"^Grant admin CATALOG - - MANAGE: grant 7 expired \S+Z, already deleted; "
+                              r"replaced by grant 8, expiring \S+Z\n$")
+
+    def test_a_grant_another_run_renewed_first_is_kept_if_it_fits(self):
+        # Another run renewed grant 7 at the same time: it deleted 7 and granted 9 before this run's
+        # DELETE (which answers 404), or after it (the DELETE answers 200); this run's POST answers 409.
+        fresh = {**grant(9, "admin", "CATALOG", "MANAGE", at(days=7, minutes=-1)), "purpose": "the other run"}
+        for name, after in (("before", {f"GET {GRANTS}": [{"delete": 7, "add": fresh}]}),
+                            ("after", {f"DELETE {GRANTS}/7": [{"add": fresh}]})):
+            with self.subTest(deleted=name):
+                self.seed([grant(7, "admin", "CATALOG", "MANAGE", at(days=-1))], after=after)
+                status, err = self.run_step("ensure_grant admin CATALOG - - MANAGE\n")
+                self.assertEqual(status, 0, err)
+                self.assertEqual(self.requests(), [f"POST {GRANTS}", f"GET {GRANTS}?principal=admin",
+                                                   f"DELETE {GRANTS}/7", f"POST {GRANTS}",
+                                                   f"GET {GRANTS}?principal=admin"])
+                self.assertEqual(self.grants(), [fresh])
+                self.assertIn("another run granted it anew under the terms, kept", err)
+
+    def test_a_grant_another_run_made_that_does_not_fit_fails(self):
+        # What the other run granted expires within the margin: read once, not renewed again.
+        other = grant(9, "admin", "CATALOG", "MANAGE", at(days=1))
+        self.seed([grant(7, "admin", "CATALOG", "MANAGE", at(days=-1))],
+                  after={f"GET {GRANTS}": [{"delete": 7, "add": other}]})
+        status, err = self.run_step("ensure_grant admin CATALOG - - MANAGE\n")
+        self.assertNotEqual(status, 0)
+        self.assertEqual(self.requests(), [f"POST {GRANTS}", f"GET {GRANTS}?principal=admin",
+                                           f"DELETE {GRANTS}/7", f"POST {GRANTS}",
+                                           f"GET {GRANTS}?principal=admin"])
+        self.assertEqual(self.grants(), [other])
+        self.assertIn("answered 409 again after grant 7 (expired ", err)
+        self.assertIn("is not kept: grant 9 expires ", err)
+
+    def test_a_failed_delete_fails(self):
+        self.seed([grant(7, "admin", "CATALOG", "MANAGE", at(days=-1))], force={f"DELETE {GRANTS}/7": [500]})
+        status, err = self.run_step("ensure_grant admin CATALOG - - MANAGE\n")
+        self.assertNotEqual(status, 0)
+        self.assertIn("Grant admin CATALOG - - MANAGE: grant 7 expired ", err)
+        self.assertIn("deleting it failed with 500", err)
+        self.assertEqual(self.requests()[-1], f"DELETE {GRANTS}/7")
 
     def test_other_failures_still_fail(self):
         self.seed([], force={f"POST {GRANTS}": [404]})
