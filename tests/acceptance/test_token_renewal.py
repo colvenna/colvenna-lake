@@ -8,7 +8,11 @@ revoked or expired token, or a disabled principal's, is refused with 401).
 
 For each token: valid with plenty of time left (nothing issued), valid but within the margin
 (renewed, the Secret updated, the old token not revoked), invalid (the admin token: bootstrap-admin in
-the pod again; the operator's: issued anew with the admin token) and missing (issued as before)."""
+the pod again; the operator's: issued anew with the admin token) and missing (issued as before). Every
+new token is recorded in its Secret with its id, which decides its expiry on the next run (a newer
+token with the same description does not hide it); a Secret without one, as installs before left
+it, falls back on the description. A check that gets no verdict (a 503, no answer) or an unexpected
+state stops the install before anything is issued or written."""
 import base64
 import json
 import os
@@ -66,6 +70,9 @@ if tool == "kubectl":
             if a.startswith("--from-file="):
                 key, file = a[len("--from-file="):].split("=", 1)
                 data[key] = base64.b64encode(open(file, "rb").read()).decode()
+            elif a.startswith("--from-literal="):
+                key, value = a[len("--from-literal="):].split("=", 1)
+                data[key] = base64.b64encode(value.encode()).decode()
         print(json.dumps({"apiVersion": "v1", "kind": "Secret", "data": data,
                           "metadata": {"name": name, "namespace": namespace}}))
     elif args[2:4] == ["get", "secret"]:
@@ -90,7 +97,11 @@ if tool == "kubectl":
             token = issue(name, ttl, "bootstrap", "bootstrap")
             files[out] = token["secret"]
             save()
-            print(f'Issued token {token["id"]} for admin {name}; written to {out}')
+            # Main.bootstrapAdmin's log line (logback's pattern, on standard output).
+            if state.get("bootstrap_logs_id", True):
+                expires = datetime.datetime.fromtimestamp(token["expiresAt"], datetime.timezone.utc)
+                print(f'2026-11-02T10:00:00.000Z INFO  [main] com.colvenna.catalog.Main - Issued token {token["id"]} '
+                      f'for admin {name} expiring {expires.strftime("%Y-%m-%dT%H:%M:%S.%fZ")}; written to {out}')
         elif command == ["sh", "-c", "rm -f /tmp/admin-token"]:
             files.pop("/tmp/admin-token", None)
             save()
@@ -122,6 +133,13 @@ elif tool == "curl":
             sys.stdout.write(str(status))
         save()
         sys.exit(22 if status >= 400 and "--fail-with-body" in args else 0)
+    m = re.fullmatch(r"/colvenna/admin/v1/principals/([^/]+)/tokens", path_)
+    if m and method == "GET" and state.get("listing") == "000":
+        # Nothing answers: the port-forward is gone.
+        sys.stdout.write("000")
+        sys.exit(7)
+    if m and method == "GET" and state.get("listing") == "503":
+        answer(503, {"message": "Too many token lookups in flight.", "code": 503})
     token = next((t for t in state["tokens"] if bearer and t["secret"] == bearer), None)
     who = state["principals"].get(token["principal"]) if token else None
     if token is None or token["revokedAt"] or token["expiresAt"] <= time.time() or who is None \
@@ -129,7 +147,6 @@ elif tool == "curl":
         answer(401, {"message": "Bearer token is not valid.", "code": 401})
     if not who["admin"]:
         answer(403, {"message": "Admin only.", "code": 403})
-    m = re.fullmatch(r"/colvenna/admin/v1/principals/([^/]+)/tokens", path_)
     if m and method == "GET":
         answer(200, {"tokens": [{k: t[k] for k in ("id", "principal", "description", "createdAt", "createdBy",
                                                   "expiresAt", "revokedAt")} | {"revokedBy": None}
@@ -193,11 +210,21 @@ class TokenRenewal(unittest.TestCase):
             "revokedAt": time.time() if revoked else None})
         return secret
 
-    def hold(self, name, secret):
+    def id_of(self, secret):
+        return next(t["id"] for t in self.state["tokens"] if t["secret"] == secret)
+
+    def hold(self, name, secret, recorded=None):
+        """The Secret with the token; with the id an install recorded beside it, if given (True: the
+        token's own); without one, as an install before ids were recorded left it."""
         self.state["secrets"][name] = {"token": b64(secret)}
+        if recorded is not None:
+            self.state["secrets"][name]["id"] = b64(self.id_of(secret) if recorded is True else recorded)
 
     def held(self, name):
         return base64.b64decode(self.state["secrets"][name]["token"]).decode()
+
+    def recorded(self, name):
+        return base64.b64decode(self.state["secrets"][name]["id"]).decode()
 
     def works(self, secret):
         token = next(t for t in self.state["tokens"] if t["secret"] == secret)
@@ -230,19 +257,20 @@ class TokenRenewal(unittest.TestCase):
         self.assertEqual(leaked, [])
         return result
 
-    def admin(self, **env):
+    def admin(self, replace="", **env):
+        """ensure_admin_token, after the bash in `replace` (functions it replaces)."""
         work = os.path.join(self.scratch.tmp.name, "work")
         evidence = os.path.join(self.scratch.tmp.name, "evidence")
         return self.run_probe(
             f'evidence={evidence} work={work}\nmkdir -p "$evidence" "$work"\n'
             + assignments(CATALOG_SCRIPT, "ADMIN_TOKEN_TTL", "ADMIN_TOKEN_SECRET")
             + function(CATALOG_SCRIPT, "bootstrap_admin_token") + function(CATALOG_SCRIPT, "ensure_admin_token")
-            + "ensure_admin_token\n", **env)
+            + replace + "ensure_admin_token\n", **env)
 
-    def operator(self, **env):
+    def operator(self, replace="", **env):
         return self.run_probe(
             assignments(OPERATOR_SCRIPT, "OPERATOR_TOKEN_SECRET") + function(OPERATOR_SCRIPT, "ensure_operator_token")
-            + "admin_open\ntrap admin_close EXIT\nensure_operator_token\n", **env)
+            + replace + "admin_open\ntrap admin_close EXIT\nensure_operator_token\n", **env)
 
     def bootstrapped(self):
         return [c for c in self.calls() if "bootstrap-admin" in c]
@@ -257,7 +285,8 @@ class TokenRenewal(unittest.TestCase):
         self.assertEqual(self.state["issued"], [])
         self.assertEqual(self.state["applied"], [])
         self.assertEqual(self.held(ADMIN_SECRET), old)
-        self.assertRegex(result.stdout, r"^admin token: keep \(expires \S+, in 7[45]\.[0-9] days\)\n$")
+        self.assertRegex(result.stdout, r"^admin token: keep \(expires \S+, in 7[45]\.[0-9] days; no id recorded: "
+                                        r"the latest token described as bootstrap or colvenna-catalog-admin-token\)\n$")
 
     def test_admin_token_within_the_margin_is_renewed_through_the_admin_api(self):
         old = self.token("admin", 10, "bootstrap")
@@ -274,7 +303,10 @@ class TokenRenewal(unittest.TestCase):
         self.assertTrue(self.works(old))
         self.assertEqual(self.bootstrapped(), [])
         self.assertIn("admin token: renew (expires ", result.stdout)
-        self.assertRegex(result.stdout, r"admin token: new \(expires \S+, in (89\.9|90\.0) days\)\n$")
+        # Recorded with its id, by which the next run finds its expiry.
+        self.assertEqual(self.recorded(ADMIN_SECRET), self.id_of(new))
+        self.assertRegex(result.stdout, r"admin token: new \(expires \S+, in (89\.9|90\.0) days; token \S+, "
+                                        r"the recorded id\)\n$")
 
     def test_a_renewed_admin_token_is_found_by_its_description(self):
         # The previous install's renewal, the latest of the described tokens, decides; the older
@@ -295,8 +327,42 @@ class TokenRenewal(unittest.TestCase):
         result = self.admin()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([i["description"] for i in self.state["issued"]], ["colvenna-catalog-admin-token"])
-        self.assertIn("admin token: renew (no unrevoked token described as bootstrap or "
+        self.assertIn("admin token: renew (no id recorded, no unrevoked token described as bootstrap or "
                       "colvenna-catalog-admin-token)", result.stdout)
+
+    def test_the_recorded_id_decides_the_expiry(self):
+        # A newer token with the Secret's description (an issue whose Secret write failed, say) does
+        # not hide the Secret's own, which expires in 10 days; without the id, it does.
+        for name, principal, description, run in (
+                (ADMIN_SECRET, "admin", "colvenna-catalog-admin-token", self.admin),
+                (OPERATOR_SECRET, "colvenna-operator", "colvenna-operator-catalog-token", self.operator)):
+            for recorded in (True, None):
+                with self.subTest(secret=name, recorded=recorded):
+                    self.setUp()
+                    if principal != "admin":
+                        self.with_operator()
+                    current = self.token(principal, 10, description)
+                    self.token(principal, 80, description)
+                    self.hold(name, current, recorded)
+                    result = run()
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    if recorded:
+                        self.assertIn("token: renew (expires ", result.stdout)
+                        self.assertIn(f"in 10.0 days; token {self.id_of(current)}, the recorded id)", result.stdout)
+                        self.assertEqual(len(self.state["issued"]), 1)
+                        self.assertEqual(self.recorded(name), self.id_of(self.held(name)))
+                    else:
+                        self.assertIn("token: keep (expires ", result.stdout)
+                        self.assertEqual(self.state["issued"], [])
+
+    def test_a_recorded_id_not_among_the_unrevoked_tokens_is_renewed(self):
+        revoked = self.token("admin", 80, "colvenna-catalog-admin-token", revoked=True)
+        self.hold(ADMIN_SECRET, self.token("admin", 80, "colvenna-catalog-admin-token"), self.id_of(revoked))
+        result = self.admin()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"admin token: renew (the recorded id {self.id_of(revoked)} is not among admin's unrevoked "
+                      "tokens)", result.stdout)
+        self.assertEqual(self.recorded(ADMIN_SECRET), self.id_of(self.held(ADMIN_SECRET)))
 
     def test_the_margin_is_token_renew_days(self):
         self.hold(ADMIN_SECRET, self.token("admin", 75, "bootstrap"))
@@ -326,6 +392,8 @@ class TokenRenewal(unittest.TestCase):
                 new = self.held(ADMIN_SECRET)
                 self.assertNotEqual(new, old)
                 self.assertTrue(self.works(new))
+                # The id bootstrap-admin logged.
+                self.assertEqual(self.recorded(ADMIN_SECRET), self.id_of(new))
                 self.assertEqual(self.state["pod_files"], {})
                 self.assertIn("admin token: invalid (the catalog refuses it: ", result.stdout)
                 self.assertIn("admin token: new (expires ", result.stdout)
@@ -339,6 +407,37 @@ class TokenRenewal(unittest.TestCase):
         self.assertTrue(self.works(self.held(ADMIN_SECRET)))
         self.assertEqual(self.state["pod_files"], {})
         self.assertIn("admin token: missing (no Secret colvenna-catalog-admin-token)", result.stdout)
+        self.assertEqual(self.recorded(ADMIN_SECRET), self.id_of(self.held(ADMIN_SECRET)))
+        self.assertIn("the recorded id)", result.stdout)
+
+    def test_a_bootstrap_that_logs_no_id_falls_back_on_the_description(self):
+        self.state["bootstrap_logs_id"] = False
+        result = self.admin()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("bootstrap-admin logged no token id", result.stderr)
+        self.assertEqual(self.recorded(ADMIN_SECRET), "-")
+        self.assertTrue(self.works(self.held(ADMIN_SECRET)))
+        self.assertIn("admin token: new (expires ", result.stdout)
+        self.assertIn("no id recorded: the latest token described as bootstrap", result.stdout)
+
+    def test_a_check_that_gets_no_verdict_stops_the_install(self):
+        # A 503 (the catalog busy), or no answer at all (000: the port-forward gone), is no verdict on
+        # the token: nothing is bootstrapped, issued or written.
+        for listing in ("503", "000"):
+            for name, run in ((ADMIN_SECRET, self.admin), (OPERATOR_SECRET, self.operator)):
+                with self.subTest(listing=listing, secret=name):
+                    self.setUp()
+                    old = self.with_operator(10) if name == OPERATOR_SECRET else self.token("admin", 10, "bootstrap")
+                    if name == ADMIN_SECRET:
+                        self.hold(ADMIN_SECRET, old)
+                    self.state["listing"] = listing
+                    result = run()
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(f"failed with {listing}", result.stderr)
+                    self.assertEqual(self.bootstrapped(), [])
+                    self.assertEqual(self.state["issued"], [])
+                    self.assertEqual(self.state["applied"], [])
+                    self.assertEqual(self.held(name), old)
 
     def test_a_disabled_admin_fails_the_install(self):
         self.hold(ADMIN_SECRET, self.token("admin", 60, "bootstrap"))
@@ -346,6 +445,22 @@ class TokenRenewal(unittest.TestCase):
         result = self.admin()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("refuses the admin token just issued", result.stderr)
+
+    def test_an_unexpected_state_issues_nothing(self):
+        # Only missing and invalid lead to bootstrap-admin, only those and renew to a new token.
+        unexpected = 'secret_token_state() { echo "forbidden (403)"; }\n'
+        for name, run in ((ADMIN_SECRET, self.admin), (OPERATOR_SECRET, self.operator)):
+            with self.subTest(secret=name):
+                self.setUp()
+                old = self.with_operator(60) if name == OPERATOR_SECRET else self.token("admin", 60, "bootstrap")
+                if name == ADMIN_SECRET:
+                    self.hold(ADMIN_SECRET, old)
+                result = run(replace=unexpected)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("token, forbidden (403): nothing issued", result.stderr)
+                self.assertEqual(self.bootstrapped(), [])
+                self.assertEqual(self.state["issued"], [])
+                self.assertEqual(self.held(name), old)
 
     # -- the operator's token -----------------------------------------------------------------------
 
@@ -382,6 +497,7 @@ class TokenRenewal(unittest.TestCase):
         self.assertTrue(self.works(old))
         self.assertIn("operator token: renew (expires ", result.stdout)
         self.assertIn("operator token: new (expires ", result.stdout)
+        self.assertEqual(self.recorded(OPERATOR_SECRET), self.id_of(new))
 
     def test_operator_token_lifetime_is_operator_token_ttl(self):
         self.with_operator(5)
@@ -426,6 +542,7 @@ class TokenRenewal(unittest.TestCase):
                                                  "createdBy": "admin", "ttl": "P90D"}])
         self.assertEqual(self.state["applied"], [OPERATOR_SECRET])
         self.assertTrue(self.works(self.held(OPERATOR_SECRET)))
+        self.assertEqual(self.recorded(OPERATOR_SECRET), self.id_of(self.held(OPERATOR_SECRET)))
         self.assertIn("operator token: missing (no Secret colvenna-operator-catalog-token)", result.stdout)
 
     def test_a_disabled_operator_fails_the_install(self):

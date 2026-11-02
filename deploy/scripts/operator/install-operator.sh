@@ -19,10 +19,11 @@ OPERATOR_TOKEN_SECRET=colvenna-operator-catalog-token
 # ensure_operator_token: the operator's token Secret holds a token the catalog accepts, with at
 # least TOKEN_RENEW_DAYS (default 30) days left (lib/catalog-admin.sh's token_state). Else (no
 # Secret, a token the catalog refuses, or fewer days left) a new one, issued with the admin token,
-# lasting OPERATOR_TOKEN_TTL and described as the Secret, replaces it; it is checked to work. The
-# old token is not revoked: it expires by itself. The operator reads the mounted Secret's file on
-# every catalog call, so it takes the new token once the kubelet refreshes the volume, with no
-# restart; meanwhile the old one, renewed with days left, still works. Needs admin_open.
+# lasting OPERATOR_TOKEN_TTL and described as the Secret, replaces it, with its id (by which the
+# next run finds its expiry); it is checked to work. The old token is not revoked: it expires by
+# itself. The operator reads the mounted Secret's file on every catalog call, so it takes the new
+# token once the kubelet refreshes the volume, with no restart; meanwhile the old one, renewed with
+# days left, still works. Needs admin_open.
 ensure_operator_token() {
   local state="missing (no Secret $OPERATOR_TOKEN_SECRET)" status
   if kubectl -n "$OPERATOR_NAMESPACE" get secret "$OPERATOR_TOKEN_SECRET" >/dev/null 2>&1; then
@@ -30,7 +31,14 @@ ensure_operator_token() {
       "$OPERATOR_TOKEN_SECRET")"
   fi
   echo "operator token: $state"
-  [[ "$state" != keep* ]] || return 0
+  case "$state" in
+    keep*) return 0 ;;
+    missing* | invalid* | renew*) ;;
+    *)
+      echo "Unexpected state of the operator token, $state: nothing issued" >&2
+      return 1
+      ;;
+  esac
   # The principal, an admin, unless it is there (a restore of the metadata database loses one
   # created later).
   status="$(curl -s -o "$ADMIN_DIR/principal.out" -w '%{http_code}' --cacert "$ADMIN_DIR/ca.crt" \
@@ -41,7 +49,7 @@ ensure_operator_token() {
     echo "Creating $OPERATOR_PRINCIPAL failed with $status: $(cat "$ADMIN_DIR/principal.out")" >&2
     return 1
   fi
-  ensure_principal_token "$OPERATOR_PRINCIPAL" "$OPERATOR_NAMESPACE" "$OPERATOR_TOKEN_SECRET" \
+  issue_secret_token "$OPERATOR_PRINCIPAL" "$OPERATOR_NAMESPACE" "$OPERATOR_TOKEN_SECRET" \
     "${OPERATOR_TOKEN_TTL:-P90D}"
   state="$(secret_token_state "$OPERATOR_NAMESPACE" "$OPERATOR_TOKEN_SECRET" "$OPERATOR_PRINCIPAL" \
     "$OPERATOR_TOKEN_SECRET")"

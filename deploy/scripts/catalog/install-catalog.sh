@@ -53,11 +53,12 @@ ADMIN_TOKEN_TTL=P90D
 ADMIN_TOKEN_SECRET=colvenna-catalog-admin-token
 
 # bootstrap_admin_token: a new admin token from bootstrap-admin in a catalog pod, straight into the
-# admin token Secret, never printed. bootstrap-admin needs only the metadata database (it creates
-# the principal admin if missing), so it works when no admin token does. It describes its tokens as
-# "bootstrap".
+# admin token Secret, never printed, with its id (lib/catalog-admin.sh's store_secret_token).
+# bootstrap-admin needs only the metadata database (it creates the principal admin if missing), so
+# it works when no admin token does. It describes its tokens as "bootstrap", and logs the id of the
+# one it issued ("Issued token <id> for admin ..."; Colvenna Catalog v1.0.0, Main.bootstrapAdmin).
 bootstrap_admin_token() {
-  local pod
+  local pod id
   pod="$(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" \
     -o jsonpath='{.items[0].metadata.name}')"
   # bootstrap-admin writes only a file that is not there yet.
@@ -71,13 +72,11 @@ bootstrap_admin_token() {
   kubectl -n "$CATALOG_NAMESPACE" exec "$pod" -- \
     sh -c 'cat /tmp/admin-token; status=$?; rm -f /tmp/admin-token; exit $status' \
     >"$work/admin-token"
-  # Never replace a Secret with an empty one.
-  if [[ ! -s "$work/admin-token" ]]; then
-    echo "bootstrap-admin produced no token" >&2
-    return 1
+  id="$(sed -n 's/.*Issued token \([0-9a-f-]\{36\}\) for admin .*/\1/p' "$evidence/bootstrap-admin.log" | tail -n 1)"
+  if [[ -z "$id" ]]; then
+    echo "bootstrap-admin logged no token id: the Secret's expiry is found by the token's description" >&2
   fi
-  kubectl -n "$CATALOG_NAMESPACE" create secret generic "$ADMIN_TOKEN_SECRET" \
-    --from-file=token="$work/admin-token" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  store_secret_token "$CATALOG_NAMESPACE" "$ADMIN_TOKEN_SECRET" "$work/admin-token" "$id"
   rm -f "$work/admin-token"
 }
 
@@ -88,8 +87,9 @@ bootstrap_admin_token() {
 #   - fewer days left: a new token through the admin API, issued with the token itself and
 #     described as the Secret;
 #   - else it is kept.
-# The old token is not revoked: it expires by itself, so a script holding it keeps working until
-# then. A new token is checked to work.
+# A new token goes into the Secret with its id, by which the next run finds its expiry, and is
+# checked to work. The old token is not revoked: it expires by itself, so a script holding it keeps
+# working until then.
 ensure_admin_token() {
   local state="missing (no Secret $ADMIN_TOKEN_SECRET)"
   if kubectl -n "$CATALOG_NAMESPACE" get secret "$ADMIN_TOKEN_SECRET" >/dev/null 2>&1; then
@@ -104,12 +104,17 @@ ensure_admin_token() {
       return 0
       ;;
     renew*)
-      ensure_principal_token admin "$CATALOG_NAMESPACE" "$ADMIN_TOKEN_SECRET" "$ADMIN_TOKEN_TTL"
+      issue_secret_token admin "$CATALOG_NAMESPACE" "$ADMIN_TOKEN_SECRET" "$ADMIN_TOKEN_TTL"
       ;;
-    *)
+    missing* | invalid*)
       admin_close
       bootstrap_admin_token
       admin_open
+      ;;
+    *)
+      admin_close
+      echo "Unexpected state of the admin token, $state: nothing issued" >&2
+      return 1
       ;;
   esac
   state="$(secret_token_state "$CATALOG_NAMESPACE" "$ADMIN_TOKEN_SECRET" admin bootstrap \
