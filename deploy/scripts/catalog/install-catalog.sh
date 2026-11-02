@@ -5,7 +5,8 @@
 # catalog Colvenna Lake built itself (before #295) is taken over in place, its metadata, tokens and
 # grants kept:
 #   1. creates the colvenna_catalog role and database on the project RDS instance;
-#   2. issues the private CA (kept in the cluster) and a server certificate for the Service;
+#   2. issues the private CA (kept in the cluster; its certificate issued anew with the same key
+#      when it expires within CA_RENEW_DAYS, ensure_ca) and a server certificate for the Service;
 #   3. installs the release's Helm chart with its image, both as fetch-catalog.sh fetched and checked
 #      them (catalog-release.json), with Colvenna Lake's values (catalog_values);
 #   4. keeps the platform's admin token, in the Secret colvenna-catalog-admin-token, working, never
@@ -22,9 +23,11 @@
 source "$(dirname "$0")/../lib/catalog-admin.sh"
 
 # catalog_values: the chart's values, one helm argument per line, from IMAGE (<repository>@<digest>),
-# BUCKET, DB_ENDPOINT, SERVER_ROLE, DATA_ROLE, WRITE_NODES, SHA (this commit), CATALOG_CANDIDATE and
-# CATALOG_BUILT_FROM, and the environment. Colvenna Lake's own chart set the same values under the
-# same keys; the catalog's chart has them all.
+# BUCKET, DB_ENDPOINT, SERVER_ROLE, DATA_ROLE, WRITE_NODES, SHA (this commit), CATALOG_CANDIDATE,
+# CATALOG_BUILT_FROM, CA_SHA256 (the CA certificate's fingerprint) and the environment. Colvenna Lake's
+# own chart set the same values under the same keys; the catalog's chart has them all. The pods read
+# their key store when they start: the fingerprint in their template rolls them when the CA
+# certificate is issued anew, so they serve it (#24).
 catalog_values() {
   printf '%s\n' \
     --set "image.repository=${IMAGE%@*}" --set "image.digest=${IMAGE#*@}" \
@@ -44,6 +47,7 @@ catalog_values() {
     --set metricsClientLabel=colvenna-lake.io/monitoring \
     --set internalLoadBalancer.enabled=false \
     --set-string "podAnnotations.colvenna-lake/source-sha=$SHA" \
+    --set-string "podAnnotations.colvenna-lake/ca-sha256=$CA_SHA256" \
     --set-string "podAnnotations.colvenna-catalog/release=$CATALOG_CANDIDATE" \
     --set-string "podAnnotations.colvenna-catalog/source-sha=$CATALOG_BUILT_FROM"
 }
@@ -125,6 +129,59 @@ ensure_admin_token() {
     return 1
   fi
   echo "admin token: new ${state#* }"
+}
+
+# reissue_ca <key> <certificate> <out>: the CA certificate issued anew into <out>, valid 825 days from
+# now: the same key, subject and subject key identifier (so a server certificate either one signs
+# verifies against the other, the authority key identifier naming that key), a new serial number.
+reissue_ca() {
+  local key="$1" cert="$2" out="$3" ski
+  ski="$(openssl x509 -in "$cert" -noout -ext subjectKeyIdentifier 2>/dev/null | sed -n '2s/^ *//p')"
+  # The request carries the certificate's subject as it is encoded, not as retyped.
+  openssl x509 -x509toreq -in "$cert" -key "$key" -out "$out.csr" 2>/dev/null
+  openssl x509 -req -in "$out.csr" -key "$key" -days 825 -set_serial "0x$(openssl rand -hex 16)" \
+    -extfile <(printf '%s\n' 'basicConstraints = critical, CA:TRUE' \
+      'keyUsage = critical, keyCertSign, cRLSign' "subjectKeyIdentifier = ${ski:-hash}" \
+      'authorityKeyIdentifier = keyid:always') -out "$out" 2>/dev/null
+  rm -f "$out.csr"
+}
+
+# ensure_ca <dir>: the private CA's key and certificate in <dir>/ca.key and <dir>/ca.crt, as the
+# Secret colvenna-catalog-ca-key keeps them, made the first time. The key is made once and kept. The
+# certificate, valid 825 days, is issued anew (reissue_ca) once it has expired or expires within
+# CA_RENEW_DAYS (default 90) days, and stored in the Secret beside the same key (#24): clients still
+# holding the old certificate verify the server certificates the new one signs until the old one
+# expires. Prints what it did.
+ensure_ca() {
+  local dir="$1" renew="$((${CA_RENEW_DAYS:-90} * 86400))" before
+  if ! kubectl -n "$CATALOG_NAMESPACE" get secret colvenna-catalog-ca-key >/dev/null 2>&1; then
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 825 \
+      -subj "/CN=colvenna-catalog private CA" -keyout "$dir/ca.key" -out "$dir/ca.crt" 2>/dev/null
+    kubectl -n "$CATALOG_NAMESPACE" create secret generic colvenna-catalog-ca-key \
+      --from-file=ca.key="$dir/ca.key" --from-file=ca.crt="$dir/ca.crt" >/dev/null
+    echo "colvenna-catalog CA: made, $(openssl x509 -in "$dir/ca.crt" -noout -enddate)"
+    return 0
+  fi
+  kubectl -n "$CATALOG_NAMESPACE" get secret colvenna-catalog-ca-key -o jsonpath='{.data.ca\.key}' \
+    | base64 -d >"$dir/ca.key"
+  kubectl -n "$CATALOG_NAMESPACE" get secret colvenna-catalog-ca-key -o jsonpath='{.data.ca\.crt}' \
+    | base64 -d >"$dir/ca.crt"
+  if openssl x509 -in "$dir/ca.crt" -noout -checkend "$renew" >/dev/null; then
+    echo "colvenna-catalog CA: kept, $(openssl x509 -in "$dir/ca.crt" -noout -enddate)"
+    return 0
+  fi
+  if [[ "$(openssl pkey -in "$dir/ca.key" -pubout)" != "$(openssl x509 -in "$dir/ca.crt" -noout -pubkey)" ]]; then
+    echo "colvenna-catalog-ca-key: ca.key is not the key of ca.crt; not issuing the CA certificate anew" >&2
+    return 1
+  fi
+  before="$(openssl x509 -in "$dir/ca.crt" -noout -enddate)"
+  reissue_ca "$dir/ca.key" "$dir/ca.crt" "$dir/ca.new.crt"
+  mv "$dir/ca.new.crt" "$dir/ca.crt"
+  kubectl -n "$CATALOG_NAMESPACE" create secret generic colvenna-catalog-ca-key \
+    --from-file=ca.key="$dir/ca.key" --from-file=ca.crt="$dir/ca.crt" --dry-run=client -o yaml \
+    | kubectl apply -f - >/dev/null
+  echo "colvenna-catalog CA: issued anew with the same key and subject, $before before," \
+    "now $(openssl x509 -in "$dir/ca.crt" -noout -enddate)"
 }
 
 assert_account
@@ -258,17 +315,10 @@ grep -q '^database-ready$' "$evidence/db-bootstrap.log"
 kubectl -n "$CATALOG_NAMESPACE" delete secret colvenna-catalog-db-bootstrap >/dev/null
 
 # --- TLS ----------------------------------------------------------------------------------------
-if kubectl -n "$CATALOG_NAMESPACE" get secret colvenna-catalog-ca-key >/dev/null 2>&1; then
-  kubectl -n "$CATALOG_NAMESPACE" get secret colvenna-catalog-ca-key -o jsonpath='{.data.ca\.key}' \
-    | base64 -d >"$work/ca.key"
-  kubectl -n "$CATALOG_NAMESPACE" get secret colvenna-catalog-ca-key -o jsonpath='{.data.ca\.crt}' \
-    | base64 -d >"$work/ca.crt"
-else
-  openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 825 \
-    -subj "/CN=colvenna-catalog private CA" -keyout "$work/ca.key" -out "$work/ca.crt" 2>/dev/null
-  kubectl -n "$CATALOG_NAMESPACE" create secret generic colvenna-catalog-ca-key \
-    --from-file=ca.key="$work/ca.key" --from-file=ca.crt="$work/ca.crt" >/dev/null
-fi
+# The CA first, issued anew when due; the later steps of an install (doris, operator, polaris, verify)
+# copy it from the Secret. The server certificate, valid 397 days, is signed anew on every run.
+ensure_ca "$work" | tee "$evidence/ca-certificate.txt"
+CA_SHA256="$(openssl x509 -in "$work/ca.crt" -noout -fingerprint -sha256 | cut -d= -f2 | tr -d :)"
 service=colvenna-catalog
 names="DNS:$service,DNS:$service.$CATALOG_NAMESPACE,DNS:$service.$CATALOG_NAMESPACE.svc"
 names="$names,DNS:$service.$CATALOG_NAMESPACE.svc.cluster.local,DNS:localhost"

@@ -26,7 +26,7 @@ ENV = {"IMAGE": "123456789012.dkr.ecr.us-west-2.amazonaws.com/colvenna-lake-uat/
        "SERVER_ROLE": "arn:aws:iam::123456789012:role/colvenna-lake-uat-catalog",
        "DATA_ROLE": "arn:aws:iam::123456789012:role/colvenna-lake-uat-catalog-data",
        "WRITE_NODES": "2", "SHA": "a" * 40, "CATALOG_CANDIDATE": "v1.0.0", "CATALOG_BUILT_FROM": "b" * 40,
-       "COLVENNA_ENV": "uat", "COLVENNA_REGION": "us-west-2"}
+       "COLVENNA_ENV": "uat", "COLVENNA_REGION": "us-west-2", "CA_SHA256": "C" * 64}
 # Every value Colvenna Lake's chart (deploy/helm/colvenna-catalog, removed in #295) had, and what its
 # install gave it.
 LAKE_VALUES = {
@@ -78,11 +78,13 @@ class CatalogValuesTest(unittest.TestCase):
         given = pairs(values())
         self.assertEqual({k: given.get(k) for k in LAKE_VALUES}, LAKE_VALUES)
 
-    def test_beyond_them_only_the_release_s_names_and_no_load_balancer(self):
+    def test_beyond_them_only_the_release_s_names_the_ca_and_no_load_balancer(self):
         given = pairs(values())
         self.assertEqual({k: v for k, v in given.items() if k not in LAKE_VALUES}, {
             "podAnnotations.colvenna-catalog/release": "v1.0.0",
             "podAnnotations.colvenna-catalog/source-sha": "b" * 40,
+            # The CA certificate's fingerprint: a CA certificate issued anew rolls the pods (#24).
+            "podAnnotations.colvenna-lake/ca-sha256": "C" * 64,
             "internalLoadBalancer.enabled": "false"})
 
     def test_a_shorter_token_lifetime_for_the_renewal_test(self):
