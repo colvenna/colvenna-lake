@@ -114,13 +114,18 @@ m = json.load(open(path))
 def pin(key, digest):
     m["images"][key]["digest"] = digest
 exec(statement)
-json.dump(m, open(path, "w"), indent=2)
+with open(path, "w") as f:
+    json.dump(m, f, indent=2)
+    f.write("\n")
 PY
   commit "change the manifest"
 }
+# commit <message>: commits the scratch worktree as it is. It shares the repository's hooks, and a
+# clone with the pre-commit hooks installed (CONTRIBUTING.md) would hold these deliberately broken
+# trees to them: the commits skip them (#18), the check being install.sh's refusal, not the hooks'.
 commit() {
   git -C "$scratch" -c user.name=release-refusals -c user.email=release-refusals@colvenna-lake.invalid \
-    commit --quiet -am "$1"
+    commit --quiet --no-verify -am "$1"
 }
 # refused <case> <expected text> <install.sh arguments...>: runs the install, which must fail with
 # that text before recording anything; then the scratch worktree goes back to the base commit.
