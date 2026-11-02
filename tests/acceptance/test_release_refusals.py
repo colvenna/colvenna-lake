@@ -2,15 +2,19 @@
 functions edit and commit run on their own, in a linked worktree of a repository whose pre-commit hook
 refuses every commit, as a clone with the repository's pre-commit hooks installed can for these
 deliberately broken trees. The commits are made all the same, and the edited manifest ends with a
-newline."""
+newline. And each case's change to the manifest applies to one of the current schema (#20)."""
+import copy
 import json
 import os
+import re
 import subprocess
+import sys
 import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "deploy", "run-release-refusals.sh")
+RELEASE_TOOLS = os.path.join(os.path.dirname(os.path.dirname(HERE)), "deploy", "scripts", "release")
 
 
 def function(name):
@@ -65,6 +69,33 @@ class ScratchCommitTest(unittest.TestCase):
             text = f.read()
         self.assertTrue(text.endswith("}\n"), repr(text[-5:]))
         self.assertEqual(json.loads(text)["images"]["bi"]["digest"], "sha256:" + "0" * 64)
+
+
+class ManifestEditsTest(unittest.TestCase):
+    """Each case's change to the manifest (the script's edit '<statement>' lines) runs on a manifest of
+    the schema this tree's tools write (#20: schema 3 has the catalog's release apart, no images.catalog),
+    and changes it."""
+
+    def test_every_edit_applies_to_a_manifest_of_the_current_schema(self):
+        sys.path.insert(0, RELEASE_TOOLS)
+        import manifest
+        import test_manifest
+        current = manifest.build(test_manifest.inputs())
+        self.assertEqual(manifest.problems(current), [])
+        # A digest of its own for each product image, so that a re-pin or a swap shows.
+        for n, image in enumerate(current["images"].values(), 1):
+            image["digest"] = "sha256:%064x" % n
+        with open(SCRIPT) as f:
+            statements = re.findall(r"^edit '(.*)'$", f.read(), re.M)
+        self.assertGreaterEqual(len(statements), 5)
+        for statement in statements:
+            with self.subTest(statement=statement):
+                m = copy.deepcopy(current)
+
+                def pin(key, digest, m=m):
+                    m["images"][key]["digest"] = digest
+                exec(statement, {"m": m, "pin": pin})
+                self.assertNotEqual(m, current)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,9 @@
 # run the read-only verify, which fails. Before and after, the account must hold no stack of that
 # environment, and the scratch worktree no region record. Verdicts go to <evidence>/verdicts.tsv.
 # Run it from a checkout of the candidate's tag, with COLVENNA_RELEASE_REGISTRY naming the release registry
-# that holds it; it changes nothing in the account. It uses the
+# that holds it; it changes nothing in the account. From a later commit that changed only the tests (a
+# test fixed after the tag, #20), REFUSAL_BASE=<the tag> makes the scratch worktree the candidate's tree
+# all the same: the cases always run the candidate's install.sh. It uses the
 # caller's AWS credentials, as install.sh does (their AWS_PROFILE, or the default chain), and gives the
 # scratch environment the account and hosted zone (deploy/env.sh) that COLVENNA_ACCOUNT,
 # COLVENNA_HOSTED_ZONE_ID and COLVENNA_HOSTED_ZONE_NAME name, or else those COLVENNA_ENV's local state records
@@ -93,11 +95,12 @@ if ! absent; then
   exit 1
 fi
 manifest="release/$candidate/manifest.json"
-if [[ ! -f "$repo/$manifest" ]]; then
-  echo "No $manifest here: run this from a checkout of the candidate's tag" >&2
+base="$(git -C "$repo" rev-parse "${REFUSAL_BASE:-HEAD}^{commit}")"
+if ! git -C "$repo" cat-file -e "$base:$manifest" 2>/dev/null; then
+  echo "No $manifest at ${REFUSAL_BASE:-this checkout}: run this from a checkout of the candidate's tag," \
+    "or give REFUSAL_BASE=<the tag>" >&2
   exit 1
 fi
-base="$(git -C "$repo" rev-parse HEAD)"
 scratch="$(mktemp -d)/tree"
 git -C "$repo" worktree add --quiet --detach "$scratch" "$base"
 trap 'git -C "$repo" worktree remove --force "$scratch"' EXIT
@@ -151,7 +154,9 @@ refused() {
   git -C "$scratch" reset --quiet --hard "$base"
   git -C "$scratch" clean --quiet -fdx
 }
-digest() { python3 "$repo/deploy/scripts/release/manifest.py" get "$repo/$manifest" "images.$1.digest"; }
+# digest <key>: a product image's digest in the candidate's manifest (schema 3: the catalog's release is
+# not one of them, #20).
+digest() { git -C "$repo" show "$base:$manifest" | python3 -c 'import json, sys; print(json.load(sys.stdin)["images"][sys.argv[1]]["digest"])' "$1"; }
 
 if out="$(bash "$scratch/deploy/scripts/release/check-release.sh" "$candidate" --fixtures 2>&1)"; then
   verdict control PASS "$out"
@@ -169,11 +174,11 @@ commit "another candidate's name"
 refused other-candidate "not v0.0.0-dev.998's" --release v0.0.0-dev.998
 edit 'del m["images"]["bi"]'
 refused incomplete "images.bi: missing" --release "$candidate"
-edit 'pin("catalog", "sha256:" + "0" * 64)'
-refused unknown-digest "colvenna-lake-release/colvenna-catalog:$candidate is $(digest catalog) (failure: None), not sha256:$(printf '0%.0s' {1..64})" \
+edit 'pin("operator", "sha256:" + "0" * 64)'
+refused unknown-digest "colvenna-lake-release/colvenna-operator:$candidate is $(digest operator) (failure: None), not sha256:$(printf '0%.0s' {1..64})" \
   --release "$candidate"
-edit 'catalog, console = m["images"]["catalog"]["digest"], m["images"]["console"]["digest"]; pin("catalog", console); pin("console", catalog)'
-refused swapped-digests "colvenna-lake-release/colvenna-catalog:$candidate is $(digest catalog) (failure: None), not $(digest console)" \
+edit 'operator, console = m["images"]["operator"]["digest"], m["images"]["console"]["digest"]; pin("operator", console); pin("console", operator)'
+refused swapped-digests "colvenna-lake-release/colvenna-operator:$candidate is $(digest operator) (failure: None), not $(digest console)" \
   --release "$candidate"
 edit 'pin("query-engine-fe", m["images"]["query-engine-be"]["digest"])'
 refused doris-not-pinned "lib/common.sh (what install-doris.sh runs)" --release "$candidate"
