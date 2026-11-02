@@ -14,7 +14,9 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "deploy", "run-release-refusals.sh")
-RELEASE_TOOLS = os.path.join(os.path.dirname(os.path.dirname(HERE)), "deploy", "scripts", "release")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "deploy", "scripts", "release"))
+import manifest  # noqa: E402
+import test_manifest  # noqa: E402  (its inputs(): what make-manifest.sh gathers, synthetic)
 
 
 def function(name):
@@ -77,9 +79,6 @@ class ManifestEditsTest(unittest.TestCase):
     and changes it."""
 
     def test_every_edit_applies_to_a_manifest_of_the_current_schema(self):
-        sys.path.insert(0, RELEASE_TOOLS)
-        import manifest
-        import test_manifest
         current = manifest.build(test_manifest.inputs())
         self.assertEqual(manifest.problems(current), [])
         # A digest of its own for each product image, so that a re-pin or a swap shows.
