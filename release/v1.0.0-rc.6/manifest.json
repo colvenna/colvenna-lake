@@ -1,0 +1,352 @@
+{
+  "schema": 3,
+  "candidate": "v1.0.0-rc.6",
+  "source": {
+    "repository": "https://github.com/colvenna/colvenna-lake",
+    "built_from": "803357a57160c24c45b7b58a743698e82ff09d0a",
+    "tag": "v1.0.0-rc.6 points at built_from with release/v1.0.0-rc.6/ added, nothing else"
+  },
+  "generated": {
+    "at": "2026-11-01T23:59:31Z",
+    "environment": "uat",
+    "region": "us-west-2"
+  },
+  "images": {
+    "flink": {
+      "repository": "colvenna-lake-release/flink-base",
+      "tag": "v1.0.0-rc.6",
+      "digest": "sha256:3f9dac3e5980c9842cdceb19398a9163815bd861030ff9f318159a50b9f9e160"
+    },
+    "operator": {
+      "repository": "colvenna-lake-release/colvenna-operator",
+      "tag": "v1.0.0-rc.6",
+      "digest": "sha256:3cca0b9b9f1b5e7f98fb516e9cb29b2bc03f204a9050aa9f14d1bfe5c9903af6"
+    },
+    "jobs-mysql": {
+      "repository": "colvenna-lake-release/colvenna-jobs",
+      "tag": "v1.0.0-rc.6-mysql",
+      "digest": "sha256:54b81c49bbc8d3962717308c2780dce9046a171fbd6d43d947f8585de55306d4"
+    },
+    "jobs-postgres": {
+      "repository": "colvenna-lake-release/colvenna-jobs",
+      "tag": "v1.0.0-rc.6-postgres",
+      "digest": "sha256:7dd3c80a68f3c96741dce1fa95064576883e701327abd81397e7e06cb1b2459c"
+    },
+    "jobs-mongodb": {
+      "repository": "colvenna-lake-release/colvenna-jobs",
+      "tag": "v1.0.0-rc.6-mongodb",
+      "digest": "sha256:0d647168e15cad2ca7f650d2a64d90774ca2ad7be40d4df7a182984201b6a073"
+    },
+    "jobs-sql": {
+      "repository": "colvenna-lake-release/colvenna-jobs",
+      "tag": "v1.0.0-rc.6-sql",
+      "digest": "sha256:f019fc3d6d4c3b3bf33f9a2e1dd41fcf4043cf43182d328e49a82868a6f7a418"
+    },
+    "jobs-kafka": {
+      "repository": "colvenna-lake-release/colvenna-jobs",
+      "tag": "v1.0.0-rc.6-kafka",
+      "digest": "sha256:e69df91a6e97ede7f0afcb901c8504f43b56d53924e70d8215e1003d67a51b4f"
+    },
+    "console": {
+      "repository": "colvenna-lake-release/colvenna-console",
+      "tag": "v1.0.0-rc.6",
+      "digest": "sha256:b8a8fa05f63ce6af89d4eba2d1eac4d0217c8643dd63ec1bd39648fbaecbc676"
+    },
+    "bi": {
+      "repository": "colvenna-lake-release/colvenna-bi",
+      "tag": "v1.0.0-rc.6",
+      "digest": "sha256:6393395a17b9801af413fec4458f99cd3eda31abe0e53ebf53e3b573dc21ba2b"
+    },
+    "query-engine-fe": {
+      "repository": "colvenna-lake-release/query-engine",
+      "tag": "v1.0.0-rc.6-fe",
+      "digest": "sha256:8ef385893d63adae41f980d626dbf3818320a2fe008841bcca19a1f9b0c6104b"
+    },
+    "query-engine-be": {
+      "repository": "colvenna-lake-release/query-engine",
+      "tag": "v1.0.0-rc.6-be",
+      "digest": "sha256:d98355172b05a3430665033dc47bb1fbe80e0510a7de994d09fc867a0d746645"
+    }
+  },
+  "fixtures": {
+    "images": {
+      "readers-spark": {
+        "repository": "colvenna-lake-release/test-readers",
+        "tag": "v1.0.0-rc.6-spark",
+        "digest": "sha256:dfda6b37d6f63a2eea6001f32691f36a03d4ba0416bdc31893494d61acc428f1"
+      }
+    },
+    "third_party": {
+      "strimzi-operator": {
+        "upstream": "quay.io/strimzi/operator:1.2.0@sha256:77f8fa8121a67561c3418de985783d197f51b8931e9a47f793dc0437dc6bb21f",
+        "repository": "colvenna-lake-release/third-party",
+        "tag": "v1.0.0-rc.6-strimzi-operator",
+        "digest": "sha256:77f8fa8121a67561c3418de985783d197f51b8931e9a47f793dc0437dc6bb21f"
+      },
+      "strimzi-kafka": {
+        "upstream": "quay.io/strimzi/kafka:1.2.0-kafka-4.3.1@sha256:fef34b5438e8556cc08c01f3e254e47346f061b53a4e38d4289853777e0ea7f1",
+        "repository": "colvenna-lake-release/third-party",
+        "tag": "v1.0.0-rc.6-strimzi-kafka",
+        "digest": "sha256:fef34b5438e8556cc08c01f3e254e47346f061b53a4e38d4289853777e0ea7f1"
+      },
+      "airflow": {
+        "upstream": "docker.io/apache/airflow@sha256:6499a680a93463846d3a6be980e85d601dc97b0d81e82eed9ef5e5cb9da31b79",
+        "repository": "colvenna-lake-release/third-party",
+        "tag": "v1.0.0-rc.6-airflow",
+        "digest": "sha256:6499a680a93463846d3a6be980e85d601dc97b0d81e82eed9ef5e5cb9da31b79"
+      },
+      "debezium-server": {
+        "upstream": "quay.io/debezium/server:3.6.3.Final@sha256:4134d126f5fcf8295ee0cbf8a64997213499756ab61c13b877266bbdde853eed",
+        "repository": "colvenna-lake-release/third-party",
+        "tag": "v1.0.0-rc.6-debezium-server",
+        "digest": "sha256:4134d126f5fcf8295ee0cbf8a64997213499756ab61c13b877266bbdde853eed"
+      },
+      "trino": {
+        "upstream": "docker.io/trinodb/trino:484@sha256:2704eb53935af5e582d63d6033e9bf99d20c325e9b0e30b1016ef59a4773979f",
+        "repository": "colvenna-lake-release/third-party",
+        "tag": "v1.0.0-rc.6-trino",
+        "digest": "sha256:2704eb53935af5e582d63d6033e9bf99d20c325e9b0e30b1016ef59a4773979f"
+      },
+      "busybox": {
+        "upstream": "docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e",
+        "repository": "colvenna-lake-release/third-party",
+        "tag": "v1.0.0-rc.6-busybox",
+        "digest": "sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
+      }
+    }
+  },
+  "cli": {
+    "repository": "colvenna-lake-release/colvenna-cli",
+    "tag": "v1.0.0-rc.6",
+    "digest": "sha256:2c054b13d0a48b3d509e9a72ce2c43ade235bcb27641138d6af19492dd21e9a2",
+    "binaries": {
+      "colvenna-linux-amd64": "21bc8374d13f966f9d2247befe7eeb95c720f3956f42f9ff81719bea2e5de3b9",
+      "colvenna-linux-arm64": "3f001c966a3288c8b802b8f2ff908fdb8f379ffb6308aa3544a57c71b225fac4",
+      "colvenna-darwin-arm64": "d7c0cddf66b68bcd381e613d58a4eceac27a35c128079746ba6a17528d9cd8a3"
+    }
+  },
+  "charts": {
+    "colvenna-bi": {
+      "path": "deploy/helm/colvenna-bi",
+      "version": "0.1.0",
+      "appVersion": "6.1.0",
+      "tree": "e00c5085462939d6b2c015887edd257e03658090"
+    },
+    "colvenna-console": {
+      "path": "deploy/helm/colvenna-console",
+      "version": "0.1.0",
+      "appVersion": "0.1.0",
+      "tree": "799a9b1fa5e5b9e057a70273cce6b59624406d8c"
+    },
+    "colvenna-monitoring": {
+      "path": "deploy/helm/colvenna-monitoring",
+      "version": "0.1.0",
+      "appVersion": "0.1.0",
+      "tree": "ac182f5e4b213f5c4c363680ab326b9bc6268656"
+    },
+    "colvenna-operator": {
+      "path": "deploy/helm/colvenna-operator",
+      "version": "0.1.0",
+      "appVersion": "0.1.0",
+      "tree": "9664f495b60cfc387ea5620027e59d3201a22b50"
+    }
+  },
+  "catalog": {
+    "repository": "https://github.com/colvenna/colvenna-catalog",
+    "candidate": "v1.0.0",
+    "tag_commit": "56dc31e216f6fb2faa5635643599b6eb089d675c",
+    "built_from": "77984fb24823acc53e4c1e2d00747d494961552d",
+    "promotion": {
+      "candidate": "v1.0.0-rc.4",
+      "tag_commit": "5a11f1518cea38f61338f9d8891c29a4fc480533",
+      "acceptance": "7afb7ea0d79ef3a9472107a99a01f820e07a92f0",
+      "chart_digest": "sha256:06b5328572d2bc80069a0f7ebd164c5e01f331317d20cf6a376d05e4e53e4449"
+    },
+    "image": {
+      "repository": "colvenna-lake-release/colvenna-catalog",
+      "tag": "v1.0.0-rc.6",
+      "digest": "sha256:47d8834d463ca4b75d82f2c4f1dbb4466fb04cd8fb07c682e1163b3cffcc4a68",
+      "platform": "linux/amd64"
+    },
+    "chart": {
+      "repository": "colvenna-lake-release/charts/colvenna-catalog",
+      "tag": "v1.0.0-rc.6",
+      "name": "colvenna-catalog",
+      "version": "1.0.0",
+      "digest": "sha256:891ba0366a34b8523ee2eb54dfea1b6cd248e8509e700f983b0d5464dbdb1cbb"
+    },
+    "schema_version": 4
+  },
+  "installer": {
+    "install": {
+      "path": "deploy/install.sh",
+      "blob": "5c851a6db7e2555c3291299b43f4d49bc19bd4b4"
+    },
+    "uninstall": {
+      "path": "deploy/uninstall.sh",
+      "blob": "b0ef267cf4a759e8717506877bb4502f9fa9aff9"
+    }
+  },
+  "uat_cases": {
+    "path": "docs/uat/cases.md",
+    "commit": "6c0b5169983e2fb47fb3ae4eefab4e067c272a92",
+    "blob": "811f41f4bc5f9deb8d84e2fb194e7953db2a67d8"
+  },
+  "required_cases": [
+    "UAT-DEP-01",
+    "UAT-DEP-02",
+    "UAT-DEP-03",
+    "UAT-DEP-04",
+    "UAT-DEP-05",
+    "UAT-DEP-06",
+    "UAT-DEP-07",
+    "UAT-DEP-08",
+    "UAT-DEP-09",
+    "UAT-CAT-01",
+    "UAT-CAT-02",
+    "UAT-CAT-03",
+    "UAT-CAT-04",
+    "UAT-CAT-05",
+    "UAT-CAT-06",
+    "UAT-CAT-07",
+    "UAT-CAT-08",
+    "UAT-CAT-09",
+    "UAT-CAT-10",
+    "UAT-CAT-11",
+    "UAT-CAT-12",
+    "UAT-SRC-01",
+    "UAT-TBL-01",
+    "UAT-SRC-02",
+    "UAT-GOV-01",
+    "UAT-MON-01",
+    "UAT-TSK-01",
+    "UAT-SRC-03",
+    "UAT-SRC-04",
+    "UAT-QUA-01",
+    "UAT-ICE-01",
+    "UAT-ICE-02",
+    "UAT-ICE-03",
+    "UAT-NS-01",
+    "UAT-LIN-01",
+    "UAT-GOV-02",
+    "UAT-ICE-04",
+    "UAT-CON-01",
+    "UAT-DSH-01",
+    "UAT-BI-01",
+    "UAT-CON-02",
+    "UAT-ENT-01",
+    "UAT-NODE-01",
+    "UAT-NODE-02"
+  ],
+  "configurations": {
+    "install": [
+      "platform",
+      "fixtures"
+    ],
+    "regions": [
+      "us-west-2",
+      "us-east-2"
+    ]
+  },
+  "performance": {
+    "tier": "default scale",
+    "write_nodes": 2,
+    "query_nodes": 2,
+    "cdc_changes_per_second": 200,
+    "kafka_events_per_second": 2000,
+    "dashboard_qps": 10,
+    "steady_hours": 2,
+    "latency_percentiles": [
+      "p95",
+      "p99"
+    ],
+    "latency_targets": "docs/design/acceptance-contract.md#21-测量协议",
+    "method": "docs/uat/performance.md"
+  },
+  "third_party": {
+    "flink-kubernetes-operator": {
+      "upstream": "ghcr.io/apache/flink-kubernetes-operator:1.16.1@sha256:94b91ea6e9d83996f12d7360ca74e49264057cf3ce697636d81677611651d142",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-flink-kubernetes-operator",
+      "digest": "sha256:94b91ea6e9d83996f12d7360ca74e49264057cf3ce697636d81677611651d142"
+    },
+    "doris-operator": {
+      "upstream": "docker.io/apache/doris:operator-25.8.0@sha256:bd1c7dc5ff58cebf20bfcc5f3126afa96cac1278080ef2e9e0a055a0bdb37497",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-doris-operator",
+      "digest": "sha256:bd1c7dc5ff58cebf20bfcc5f3126afa96cac1278080ef2e9e0a055a0bdb37497"
+    },
+    "aws-load-balancer-controller": {
+      "upstream": "public.ecr.aws/eks/aws-load-balancer-controller:v3.6.0@sha256:337a9bf9a99bbac372c8da20afad7b059e0bc89034f1087e325455b28c7fd488",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-aws-load-balancer-controller",
+      "digest": "sha256:337a9bf9a99bbac372c8da20afad7b059e0bc89034f1087e325455b28c7fd488"
+    },
+    "prometheus": {
+      "upstream": "docker.io/prom/prometheus@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-prometheus",
+      "digest": "sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996"
+    },
+    "grafana": {
+      "upstream": "docker.io/grafana/grafana@sha256:74144189b38447facf737dfd0f3906e42e0776212bf575dc3334c3609183adf7",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-grafana",
+      "digest": "sha256:74144189b38447facf737dfd0f3906e42e0776212bf575dc3334c3609183adf7"
+    },
+    "marquez": {
+      "upstream": "docker.io/marquezproject/marquez:0.51.1@sha256:0721c976cff17d8b14f7949d85d6dac9c7ea37cb9fe857caa19833730fcb1a50",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-marquez",
+      "digest": "sha256:0721c976cff17d8b14f7949d85d6dac9c7ea37cb9fe857caa19833730fcb1a50"
+    },
+    "marquez-web": {
+      "upstream": "docker.io/marquezproject/marquez-web:0.51.1@sha256:7312112ca0e611b0a37b00d3da6a677485ae4a97622b23d3ae24d849a927868b",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-marquez-web",
+      "digest": "sha256:7312112ca0e611b0a37b00d3da6a677485ae4a97622b23d3ae24d849a927868b"
+    },
+    "polaris": {
+      "upstream": "docker.io/apache/polaris:1.8.0@sha256:347615e736cab2c9be0d8c464552ac930be4755302bb0aeb745216bbae99ba5b",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-polaris",
+      "digest": "sha256:347615e736cab2c9be0d8c464552ac930be4755302bb0aeb745216bbae99ba5b"
+    },
+    "polaris-admin-tool": {
+      "upstream": "docker.io/apache/polaris-admin-tool:1.8.0@sha256:34dde19bb321aef5925a14ba90b69e26e982a5dcbda76a9d0cfc1aac1534ba4e",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-polaris-admin-tool",
+      "digest": "sha256:34dde19bb321aef5925a14ba90b69e26e982a5dcbda76a9d0cfc1aac1534ba4e"
+    },
+    "postgres": {
+      "upstream": "docker.io/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-postgres",
+      "digest": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea"
+    },
+    "mysql": {
+      "upstream": "docker.io/library/mysql:8.4@sha256:24989179f58856db763f418010c1169fecc944e3ec1ea7e921572d83eb070f70",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-mysql",
+      "digest": "sha256:24989179f58856db763f418010c1169fecc944e3ec1ea7e921572d83eb070f70"
+    },
+    "curl": {
+      "upstream": "docker.io/curlimages/curl:8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-curl",
+      "digest": "sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6"
+    },
+    "aws-cli": {
+      "upstream": "docker.io/amazon/aws-cli:2.31.18@sha256:1a491b258590cc66866cd550f592edff80082f44daf1d903820daeca2f4954de",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-aws-cli",
+      "digest": "sha256:1a491b258590cc66866cd550f592edff80082f44daf1d903820daeca2f4954de"
+    },
+    "mongo": {
+      "upstream": "docker.io/library/mongo@sha256:3ed89b6952a7220fa06ff43d1b8af93ab069461461844fef7279b7465e44238c",
+      "repository": "colvenna-lake-release/third-party",
+      "tag": "v1.0.0-rc.6-mongo",
+      "digest": "sha256:3ed89b6952a7220fa06ff43d1b8af93ab069461461844fef7279b7465e44238c"
+    }
+  }
+}
