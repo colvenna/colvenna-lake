@@ -242,7 +242,8 @@ if ! kubectl -n "$CATALOG_NAMESPACE" get secret colvenna-catalog-admin-token >/d
     --from-file=token="$work/admin-token" >/dev/null
 fi
 
-# The operator identity reaches catalog objects only through a recorded grant.
+# The operator identity reaches catalog objects only through a recorded grant, for 7 days: every run
+# grants it anew once it has expired or is about to (ensure_grant, #22).
 admin_open
 GRANT_PURPOSE="platform operations: flow databases, fixtures and cleanup" \
   ensure_grant admin CATALOG - - MANAGE
