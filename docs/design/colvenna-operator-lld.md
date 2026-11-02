@@ -54,7 +54,7 @@ Operator 本身没有 AWS 角色。它读表用自己的 catalog 身份和按表
 
 **接入区隔离（HLD 7.3、12.5）。** 新表只能落进与用户读端隔离的接入区。Operator 每轮检查所有 grant：除了本源和 admin 平台身份，只要还有别的 principal 能读目标库（CATALOG 级或这个库的 DATABASE 级 grant），条件 `TargetIsolated` 就为 False，发 Warning 事件，并且不再准入新表（原因 `TargetNotIsolated`）。已在作业中的表不受影响。按表发布（table 级 grant）不会破坏隔离。
 
-Operator 自己的身份由安装脚本建立：`colvenna-operator` 是 admin principal，另有 catalog 级 `MANAGE`，有效期 90 天（`install-operator.sh`）。平台身份 `admin` 的 catalog 级 `MANAGE` 由 `install-catalog.sh` 建立，有效期 7 天。两条 grant 都经 `catalog-admin.sh` 的 `ensure_grant`，每次运行这两个脚本都按同一个规则核对（[#22](https://github.com/colvenna/colvenna-lake/issues/22)）：catalog 对同一个 principal、范围、库、对象、权限与 effect 只留一条 grant，不论是否过期，再建一条只得到 409；所以已有的那条已过期、剩余有效期不到余量（`GRANT_RENEW_DAYS`，默认是有效期天数的一半，向下取整，至少 1 天：`admin` 3 天，Operator 45 天）、到期晚于条款允许的（晚于现在加有效期再加 1 天）或者列不同时，删掉它，再按条款新建，两次请求之间这条 grant 不存在；其余情况保留。两次安装之间没有自动续期：`admin` 的 grant 最晚在上一次新建之后 7 天过期，Operator 的 90 天。两个身份的 token 都只在各自的 Secret 不存在时签发（90 天），重跑安装不续签（[#23](https://github.com/colvenna/colvenna-lake/issues/23)）。
+Operator 自己的身份由安装脚本建立：`colvenna-operator` 是 admin principal，另有 catalog 级 `MANAGE`，有效期 90 天（`install-operator.sh`）。平台身份 `admin` 的 catalog 级 `MANAGE` 由 `install-catalog.sh` 建立，有效期 7 天。两条 grant 都经 `catalog-admin.sh` 的 `ensure_grant`，每次运行这两个脚本都按同一个规则核对（[#22](https://github.com/colvenna/colvenna-lake/issues/22)）：catalog 对同一个 principal、范围、库、对象、权限与 effect 只留一条 grant，不论是否过期，再建一条只得到 409；所以已有的那条已过期、剩余有效期不到余量（`GRANT_RENEW_DAYS`，默认是有效期的一半：`admin` 3.5 天，Operator 45 天，测试用的 1 天的 grant 是 12 小时）、到期晚于条款允许的（晚于现在加有效期再加 1 天）或者列不同时，删掉它，再按条款新建，两次请求之间这条 grant 不存在；其余情况保留。两次安装之间没有自动续期：`admin` 的 grant 最晚在上一次新建之后 7 天过期，Operator 的 90 天。两个身份的 token 都只在各自的 Secret 不存在时签发（90 天），重跑安装不续签（[#23](https://github.com/colvenna/colvenna-lake/issues/23)）。
 
 ## 作业形态
 

@@ -105,8 +105,9 @@ post_grant() {
 # principal, scope, database, object, privilege and effect, expired or not, and answers 409 to
 # another one (#22). So an identical grant is kept only while it fits the terms; otherwise it is
 # deleted and granted anew under them. It no longer fits once it has expired, expires within
-# GRANT_RENEW_DAYS (default half the term in whole days, at least one), expires more than a day
-# later than the term allows, or names other columns.
+# GRANT_RENEW_DAYS (default half the term: a 1-day test grant is kept for its first 12 hours, not
+# renewed on every call), expires more than a day later than the term allows, or names other
+# columns.
 ensure_grant() {
   local body status verdict id reason renewed
   body="$(python3 - "$@" <<'PY'
@@ -169,13 +170,13 @@ def columns(g):
 
 
 days = int(os.environ.get("GRANT_DAYS", "7"))
-margin = int(os.environ.get("GRANT_RENEW_DAYS") or max(1, days // 2))
+margin = float(os.environ.get("GRANT_RENEW_DAYS") or days / 2)
 now = datetime.datetime.now(utc)
 expires = instant(grant["expiresAt"])
 if expires <= now:
     why = f"expired {grant['expiresAt']}"
 elif expires < now + datetime.timedelta(days=margin):
-    why = f"expires {grant['expiresAt']}, within the {margin}-day renewal margin"
+    why = f"expires {grant['expiresAt']}, within the {margin:g}-day renewal margin"
 elif expires > now + datetime.timedelta(days=days + 1):
     why = f"expires {grant['expiresAt']}, later than a {days}-day term allows"
 elif columns(grant) != columns(want):

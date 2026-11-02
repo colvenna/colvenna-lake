@@ -236,7 +236,7 @@ curl() { python3 %s %s %s "$@"; }
         self.assertEqual(err, "")
 
     def test_a_grant_expiring_within_the_margin_is_renewed(self):
-        # A 7-day term's margin is 3 days: 2 days left is renewed, 4 days left is kept.
+        # A 7-day term's margin is 3.5 days: 2 days left is renewed, 4 days left is kept.
         for left, renewed in ((dict(days=2), True), (dict(days=3, minutes=-5), True), (dict(days=4), False)):
             with self.subTest(left=left):
                 self.seed([grant(5, "admin", "CATALOG", "MANAGE", at(**left))])
@@ -247,10 +247,20 @@ curl() { python3 %s %s %s "$@"; }
                     self.assertIn(f"DELETE {GRANTS}/5", self.requests())
                     self.assertEqual(g["id"], 6)
                     self.assertFreshFor(g, 7)
-                    self.assertIn("within the 3-day renewal margin", err)
+                    self.assertIn("within the 3.5-day renewal margin", err)
                 else:
                     self.assertEqual(g["id"], 5)
                     self.assertNotIn(f"DELETE {GRANTS}/5", self.requests())
+
+    def test_a_one_day_grant_is_not_renewed_on_every_call(self):
+        # Tests grant for a day (GRANT_DAYS=1) and call again within it: kept for its first 12 hours.
+        for left, renewed in ((dict(hours=23), False), (dict(hours=13), False), (dict(hours=11), True)):
+            with self.subTest(left=left):
+                self.seed([grant(5, "verifier", "CATALOG", "READ", at(**left))])
+                status, err = self.run_step("ensure_grant verifier CATALOG - - READ\n", {"GRANT_DAYS": "1"})
+                self.assertEqual(status, 0, err)
+                [g] = self.grants()
+                self.assertEqual(g["id"] != 5, renewed)
 
     def test_the_margin_can_be_set(self):
         self.seed([grant(5, "admin", "CATALOG", "MANAGE", at(days=5))])
