@@ -54,7 +54,15 @@ Operator 本身没有 AWS 角色。它读表用自己的 catalog 身份和按表
 
 **接入区隔离（HLD 7.3、12.5）。** 新表只能落进与用户读端隔离的接入区。Operator 每轮检查所有 grant：除了本源和 admin 平台身份，只要还有别的 principal 能读目标库（CATALOG 级或这个库的 DATABASE 级 grant），条件 `TargetIsolated` 就为 False，发 Warning 事件，并且不再准入新表（原因 `TargetNotIsolated`）。已在作业中的表不受影响。按表发布（table 级 grant）不会破坏隔离。
 
-Operator 自己的身份由安装脚本建立：`colvenna-operator` 是 admin principal，另有 catalog 级 `MANAGE`，有效期 90 天（`install-operator.sh`）。平台身份 `admin` 的 catalog 级 `MANAGE` 由 `install-catalog.sh` 建立，有效期 7 天。两条 grant 都经 `catalog-admin.sh` 的 `ensure_grant`，每次运行这两个脚本都按同一个规则核对（[#22](https://github.com/colvenna/colvenna-lake/issues/22)）：catalog 对同一个 principal、范围、库、对象、权限与 effect 只留一条 grant，不论是否过期，再建一条只得到 409；所以已有的那条已过期、剩余有效期不到余量（`GRANT_RENEW_DAYS`，默认是有效期的一半：`admin` 3.5 天，Operator 45 天，测试用的 1 天的 grant 是 12 小时）、到期晚于条款允许的（晚于现在加有效期再加 1 天）或者列不同时，删掉它，再按条款新建，两次请求之间这条 grant 不存在；其余情况保留。另一次安装同时续期同一条 grant，先删掉了它（删除得到 404）或先建好了新的（新建得到 409）时，只再读一次：那一条符合条款就保留，否则失败。`install-operator.sh` 续期 Operator 的 grant 时，运行中的 Operator 可能短暂得到 403：一是删与建之间的空窗，二是另一个 catalog 副本在空窗里读到的"没有 grant"会缓存一个认证缓存周期（默认 2 秒，`COLVENNA_AUTH_CACHE_TTL`）。这时那一次 reconcile 失败，资源短暂为 `Degraded`（`reconcile failed: …`），Operator 随后重试。这个空窗避不开：catalog 的管理面没有更新 grant 的接口，唯一键又不允许先建新的、再删旧的。两次安装之间没有自动续期：`admin` 的 grant 最晚在上一次新建之后 7 天过期，Operator 的 90 天。两个身份的 token 都只在各自的 Secret 不存在时签发（90 天），重跑安装不续签（[#23](https://github.com/colvenna/colvenna-lake/issues/23)）。
+Operator 自己的身份由安装脚本建立：`colvenna-operator` 是 admin principal，另有 catalog 级 `MANAGE`，有效期 90 天（`install-operator.sh`）。平台身份 `admin` 的 catalog 级 `MANAGE` 由 `install-catalog.sh` 建立，有效期 7 天。两条 grant 都经 `catalog-admin.sh` 的 `ensure_grant`，每次运行这两个脚本都按同一个规则核对（[#22](https://github.com/colvenna/colvenna-lake/issues/22)）：catalog 对同一个 principal、范围、库、对象、权限与 effect 只留一条 grant，不论是否过期，再建一条只得到 409；所以已有的那条已过期、剩余有效期不到余量（`GRANT_RENEW_DAYS`，默认是有效期的一半：`admin` 3.5 天，Operator 45 天，测试用的 1 天的 grant 是 12 小时）、到期晚于条款允许的（晚于现在加有效期再加 1 天）或者列不同时，删掉它，再按条款新建，两次请求之间这条 grant 不存在；其余情况保留。另一次安装同时续期同一条 grant，先删掉了它（删除得到 404）或先建好了新的（新建得到 409）时，只再读一次：那一条符合条款就保留，否则失败。`install-operator.sh` 续期 Operator 的 grant 时，运行中的 Operator 可能短暂得到 403：一是删与建之间的空窗，二是另一个 catalog 副本在空窗里读到的"没有 grant"会缓存一个认证缓存周期（默认 2 秒，`COLVENNA_AUTH_CACHE_TTL`）。这时那一次 reconcile 失败，资源短暂为 `Degraded`（`reconcile failed: …`），Operator 随后重试。这个空窗避不开：catalog 的管理面没有更新 grant 的接口，唯一键又不允许先建新的、再删旧的。两次安装之间没有自动续期：`admin` 的 grant 最晚在上一次新建之后 7 天过期，Operator 的 90 天。两个身份的 token 也只在运行安装脚本时续签，规则见下文（[#23](https://github.com/colvenna/colvenna-lake/issues/23)）。
+
+Operator 的 token 在 Secret `colvenna-operator-catalog-token` 里，只在运行 `install-operator.sh` 时续签，两次运行之间不会自动轮换。每次运行都先用这个 token 调一次管理面（列出这个 principal 的 token），再按结果处理：
+
+- Secret 不存在，或 catalog 拒绝其中的 token（401：过期、撤销、principal 停用，或恢复元数据库之后不认识它）：用平台的管理员 token 签发新的；principal 不在了就先重建为 admin principal。
+- token 有效，但剩余有效期不足 `TOKEN_RENEW_DAYS`（默认 30 天）：同样签发新的。catalog 只存 token 的哈希，认不出 Secret 里的是哪一个，所以剩余有效期按这个 principal 未撤销、描述为 `colvenna-operator-catalog-token` 的 token 中最晚的过期时间算；一个也没有就续签。
+- 否则保留。
+
+新 token 的有效期是 `OPERATOR_TOKEN_TTL`（默认 `P90D`），写进 Secret 之后立即核对 catalog 接受它；旧 token 不撤销，到期自然失效。Operator 不需要重启：它每次调用 catalog 都重读挂载的 token 文件，Paimon 客户端在文件变化时重建（`LakeReader`），kubelet 更新挂载的 Secret 之后（延迟最长为 kubelet 的同步周期加缓存的传播时间）就用上新 token；在那之前，续签时还有余量的旧 token 照常可用。签发要用平台的管理员 token，它由 `install-catalog.sh` 按同样的规则续签，失效时在 catalog 的 Pod 里用 `bootstrap-admin` 重签，所以 `install.sh` 先装 catalog、后装 Operator。至少每 `TOKEN_RENEW_DAYS` 天运行一次这两步，token 就不会过期；过期了，下一次运行会重签，Operator 在那之前访问不了 catalog。
 
 ## 作业形态
 
@@ -1360,7 +1368,7 @@ Operator 只按自己的 spec 哈希更新 FlinkDeployment，所以这次手动�
 - 血缘是 Operator 依据声明和 planner 校验发的，不是运行时观测：它说明作业被允许、被验证读写哪些表，不证明每条记录的去向；列级血缘、即席查询与删除不发，见"血缘"的覆盖矩阵。只验收了 Marquez；DataHub、OpenMetadata 接收同样的事件，未经验收。
 - 数据库 CDC 源的作业（直连、Kafka 承载与 MongoDB）并行度在部署后固定（`ParallelismPinned`）；Kafka 事件源与分层表的作业按声明的并行度升级。
 - 卡住的升级需要按上面的步骤人工恢复。
-- 平台的两条 catalog 级 `MANAGE` grant（`admin` 与 Operator）只在安装时按规则续期，两次安装之间不续；它们的 catalog token 只在 Secret 不存在时签发，重跑安装不续签（[#23](https://github.com/colvenna/colvenna-lake/issues/23)）。
+- 平台的两条 catalog 级 `MANAGE` grant（`admin` 与 Operator）只在安装时按规则续期，两次安装之间不续；它们的 catalog token 也只在运行安装脚本时续签（剩余有效期不足 `TOKEN_RENEW_DAYS`，默认 30 天时，见上文），两次安装之间不会自动轮换。
 - 对账以 `reconcileMaxRows` 为上限，更大的表需要提高上限，或另外核对。
 - 平台的 Doris 只有一个 FE、一个 BE（M3 的容量），没有高可用；FE 与 BE 之间、客户端与 FE 之间是集群内的明文 MySQL 协议。Doris 用户的口令与 catalog 的 token 都只在管理账号边界内可见，但 root 口令经集群网络传给 FE。
 - 开发阶段不保证升级兼容：CRD 字段、作业参数的格式都可能变化，不做跨版本回退演练。

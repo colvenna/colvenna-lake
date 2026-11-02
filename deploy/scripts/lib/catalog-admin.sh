@@ -53,6 +53,67 @@ admin_call() {
   curl "${args[@]}" "https://localhost:$ADMIN_PORT$path"
 }
 
+# token_state <token-file> <principal> <description>...: what an install does with the token in the
+# file, one of <principal>'s (an admin): one line, which starts with
+#   invalid  when the catalog refuses it (401: expired, revoked, its principal disabled, or unknown,
+#            as after a restore of the metadata database),
+#   renew    when it works but expires in fewer than TOKEN_RENEW_DAYS days (default 30), or
+#   keep     when it works with at least that many days left,
+# and says why. It is checked with an admin call made with it: the principal's token list. That list
+# does not say which token is the file's (the catalog keeps only hashes), so its expiry is taken as
+# the latest of the principal's unrevoked tokens with one of the descriptions, those the install gives
+# it; with none of those listed, renew. Needs admin_open.
+token_state() {
+  local file="$1" principal="$2" status
+  shift 2
+  printf 'header = "Authorization: Bearer %s"\n' "$(cat "$file")" >"$ADMIN_DIR/check.curlrc"
+  status="$(curl -s -o "$ADMIN_DIR/check.json" -w '%{http_code}' --cacert "$ADMIN_DIR/ca.crt" \
+    -K "$ADMIN_DIR/check.curlrc" "https://localhost:$ADMIN_PORT/colvenna/admin/v1/principals/$principal/tokens")"
+  rm -f "$ADMIN_DIR/check.curlrc"
+  case "$status" in
+    200) ;;
+    401) echo "invalid (the catalog refuses it: $(cat "$ADMIN_DIR/check.json"))"; return 0 ;;
+    *)
+      echo "Checking the token of $principal failed with $status: $(cat "$ADMIN_DIR/check.json")" >&2
+      return 1
+      ;;
+  esac
+  python3 - "$ADMIN_DIR/check.json" "${TOKEN_RENEW_DAYS:-30}" "$@" <<'PY'
+import datetime, json, re, sys
+listed, margin, described = sys.argv[1], sys.argv[2], set(sys.argv[3:])
+if not re.fullmatch(r"[0-9]+", margin):
+    sys.exit(f"TOKEN_RENEW_DAYS is a whole number of days, not {margin!r}")
+def epoch(value):
+    # The token list gives epoch seconds with a fraction; an ISO-8601 instant is read too.
+    if isinstance(value, (int, float)):
+        return float(value)
+    return datetime.datetime.strptime(re.sub(r"\.[0-9]+", "", value), "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=datetime.timezone.utc).timestamp()
+expiries = [epoch(t["expiresAt"]) for t in json.load(open(listed))["tokens"]
+            if not t.get("revokedAt") and t.get("description") in described]
+if not expiries:
+    print("renew (no unrevoked token described as " + " or ".join(sorted(described)) + ")")
+    sys.exit()
+latest = max(expiries)
+left = (latest - datetime.datetime.now(datetime.timezone.utc).timestamp()) / 86400
+when = datetime.datetime.fromtimestamp(latest, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+print(f"{'keep' if left >= int(margin) else 'renew'} (expires {when}, in {left:.1f} days)")
+PY
+}
+
+# secret_token_state <namespace> <secret> <principal> <description>...: token_state of the token in
+# the Secret (its key "token"). Needs admin_open.
+secret_token_state() {
+  local namespace="$1" secret="$2" held="$ADMIN_DIR/held.token" state
+  shift 2
+  # Explicit returns: a caller's command substitution runs this without errexit.
+  kubectl -n "$namespace" get secret "$secret" -o jsonpath='{.data.token}' | base64 -d >"$held" \
+    || { rm -f "$held"; return 1; }
+  state="$(token_state "$held" "$@")" || { rm -f "$held"; return 1; }
+  rm -f "$held"
+  echo "$state"
+}
+
 # published_snapshot <database> <table>: the id of the snapshot colvenna-catalog serves, 0 if none.
 published_snapshot() {
   admin_call GET "/v1/colvenna/databases/$1/tables/$2/snapshot" 2>/dev/null \

@@ -8,12 +8,15 @@
 #   2. issues the private CA (kept in the cluster) and a server certificate for the Service;
 #   3. installs the release's Helm chart with its image, both as fetch-catalog.sh fetched and checked
 #      them (catalog-release.json), with Colvenna Lake's values (catalog_values);
-#   4. creates the bootstrap admin token straight into a Secret, never printing it;
+#   4. keeps the platform's admin token, in the Secret colvenna-catalog-admin-token, working, never
+#      printing it: bootstrap-admin issues it when the Secret is missing or the catalog refuses its
+#      token; a token with fewer than TOKEN_RENEW_DAYS (default 30) days left is renewed
+#      (ensure_admin_token);
 # verify-catalog.sh then checks that callers without valid credentials, and pods outside the client
 # namespaces, are refused. It also upgrades the catalog to the release a later commit pins (install.sh
 # --only catalog, after fetch-catalog.sh): every value is given anew each run, none reused from what
 # the Helm release stored.
-# Usage: install-catalog.sh <evidence-dir>
+# Usage: [TOKEN_RENEW_DAYS=<days>] install-catalog.sh <evidence-dir>
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=../lib/catalog-admin.sh
 source "$(dirname "$0")/../lib/catalog-admin.sh"
@@ -43,6 +46,80 @@ catalog_values() {
     --set-string "podAnnotations.colvenna-lake/source-sha=$SHA" \
     --set-string "podAnnotations.colvenna-catalog/release=$CATALOG_CANDIDATE" \
     --set-string "podAnnotations.colvenna-catalog/source-sha=$CATALOG_BUILT_FROM"
+}
+
+# The platform's admin token lasts 90 days (bootstrap-admin's and the admin API's).
+ADMIN_TOKEN_TTL=P90D
+ADMIN_TOKEN_SECRET=colvenna-catalog-admin-token
+
+# bootstrap_admin_token: a new admin token from bootstrap-admin in a catalog pod, straight into the
+# admin token Secret, never printed. bootstrap-admin needs only the metadata database (it creates
+# the principal admin if missing), so it works when no admin token does. It describes its tokens as
+# "bootstrap".
+bootstrap_admin_token() {
+  local pod
+  pod="$(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" \
+    -o jsonpath='{.items[0].metadata.name}')"
+  # bootstrap-admin writes only a file that is not there yet.
+  kubectl -n "$CATALOG_NAMESPACE" exec "$pod" -- sh -c 'rm -f /tmp/admin-token'
+  kubectl -n "$CATALOG_NAMESPACE" exec "$pod" -- \
+    java -cp '/opt/colvenna-catalog/colvenna-catalog.jar:/opt/colvenna-catalog/lib/*' \
+    com.colvenna.catalog.Main bootstrap-admin admin "$ADMIN_TOKEN_TTL" /tmp/admin-token \
+    >"$evidence/bootstrap-admin.log"
+  # Read and remove in one step, so the token never stays behind in the pod.
+  # shellcheck disable=SC2016  # expanded by the pod's shell
+  kubectl -n "$CATALOG_NAMESPACE" exec "$pod" -- \
+    sh -c 'cat /tmp/admin-token; status=$?; rm -f /tmp/admin-token; exit $status' \
+    >"$work/admin-token"
+  # Never replace a Secret with an empty one.
+  if [[ ! -s "$work/admin-token" ]]; then
+    echo "bootstrap-admin produced no token" >&2
+    return 1
+  fi
+  kubectl -n "$CATALOG_NAMESPACE" create secret generic "$ADMIN_TOKEN_SECRET" \
+    --from-file=token="$work/admin-token" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  rm -f "$work/admin-token"
+}
+
+# ensure_admin_token: the admin token Secret holds a token the catalog accepts, with at least
+# TOKEN_RENEW_DAYS (default 30) days left (lib/catalog-admin.sh's token_state):
+#   - no Secret, or a token the catalog refuses (expired, revoked, or unknown after a restore of the
+#     metadata database): bootstrap-admin again, as the first install does;
+#   - fewer days left: a new token through the admin API, issued with the token itself and
+#     described as the Secret;
+#   - else it is kept.
+# The old token is not revoked: it expires by itself, so a script holding it keeps working until
+# then. A new token is checked to work.
+ensure_admin_token() {
+  local state="missing (no Secret $ADMIN_TOKEN_SECRET)"
+  if kubectl -n "$CATALOG_NAMESPACE" get secret "$ADMIN_TOKEN_SECRET" >/dev/null 2>&1; then
+    admin_open
+    state="$(secret_token_state "$CATALOG_NAMESPACE" "$ADMIN_TOKEN_SECRET" admin bootstrap \
+      "$ADMIN_TOKEN_SECRET")"
+  fi
+  echo "admin token: $state"
+  case "$state" in
+    keep*)
+      admin_close
+      return 0
+      ;;
+    renew*)
+      ensure_principal_token admin "$CATALOG_NAMESPACE" "$ADMIN_TOKEN_SECRET" "$ADMIN_TOKEN_TTL"
+      ;;
+    *)
+      admin_close
+      bootstrap_admin_token
+      admin_open
+      ;;
+  esac
+  state="$(secret_token_state "$CATALOG_NAMESPACE" "$ADMIN_TOKEN_SECRET" admin bootstrap \
+    "$ADMIN_TOKEN_SECRET")"
+  admin_close
+  if [[ "$state" == invalid* ]]; then
+    echo "colvenna-catalog refuses the admin token just issued, $state: is the principal admin disabled?" >&2
+    return 1
+  fi
+  echo "admin token: new ${state#* }"
 }
 
 assert_account
@@ -88,6 +165,7 @@ chmod 700 "$work"
 cleanup() {
   kubectl -n "$CATALOG_NAMESPACE" delete secret colvenna-catalog-db-bootstrap --ignore-not-found \
     >/dev/null 2>&1 || true
+  admin_close
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -222,25 +300,8 @@ kubectl -n "$CATALOG_NAMESPACE" get pods -o jsonpath='{range .items[*]}{.status.
   >"$evidence/running-image-ids.txt"
 cp "$record" "$evidence/catalog-release.json"
 
-# --- bootstrap admin ----------------------------------------------------------------------------
-if ! kubectl -n "$CATALOG_NAMESPACE" get secret colvenna-catalog-admin-token >/dev/null 2>&1; then
-  pod="$(kubectl -n "$CATALOG_NAMESPACE" get pods -l app.kubernetes.io/name=colvenna-catalog "$LIVE_PODS" \
-    -o jsonpath='{.items[0].metadata.name}')"
-  kubectl -n "$CATALOG_NAMESPACE" exec "$pod" -- \
-    java -cp '/opt/colvenna-catalog/colvenna-catalog.jar:/opt/colvenna-catalog/lib/*' \
-    com.colvenna.catalog.Main bootstrap-admin admin P90D /tmp/admin-token >"$evidence/bootstrap-admin.log"
-  # Read and remove in one step, so the token never stays behind in the pod.
-  # shellcheck disable=SC2016  # expanded by the pod's shell
-  kubectl -n "$CATALOG_NAMESPACE" exec "$pod" -- \
-    sh -c 'cat /tmp/admin-token; status=$?; rm -f /tmp/admin-token; exit $status' \
-    >"$work/admin-token"
-  if [[ ! -s "$work/admin-token" ]]; then
-    echo "bootstrap-admin produced no token" >&2
-    exit 1
-  fi
-  kubectl -n "$CATALOG_NAMESPACE" create secret generic colvenna-catalog-admin-token \
-    --from-file=token="$work/admin-token" >/dev/null
-fi
+# --- admin token --------------------------------------------------------------------------------
+ensure_admin_token
 
 # The operator identity reaches catalog objects only through a recorded grant, for 7 days: every run
 # grants it anew once it has expired or is about to (ensure_grant, #22).
