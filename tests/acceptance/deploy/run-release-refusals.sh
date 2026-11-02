@@ -13,15 +13,18 @@
 #   cli-binaries        a CLI binary's SHA-256 other than the one in the release's colvenna-cli image
 #   tree-differs        a tree that differs from the commit the images were built from outside release/
 #   uncommitted         a change not committed
-#   other-mode          an environment installed from source at this commit (its install-mode record)
+#   other-mode          an environment installed from source at the base commit (its install-mode record)
 # and, as the control, that check-release.sh passes the candidate as it is (with --fixtures).
-# Each case runs install.sh in a scratch worktree of this commit, changed in that one way and
-# committed there, for an environment that does not exist (named from the run id), with --only
-# verify: were a refusal to fail, the install would record the region in the scratch worktree and
-# run the read-only verify, which fails. Before and after, the account must hold no stack of that
-# environment, and the scratch worktree no region record. Verdicts go to <evidence>/verdicts.tsv.
+# Each case runs install.sh in a scratch worktree of the base commit (this one, or REFUSAL_BASE),
+# changed in that one way and committed there, for an environment that does not exist (named from
+# the run id), with --only verify: were a refusal to fail, the install would record the region in
+# the scratch worktree and run the read-only verify, which fails. Before and after, the account must
+# hold no stack of that environment, and the scratch worktree no region record. Verdicts go to
+# <evidence>/verdicts.tsv.
 # Run it from a checkout of the candidate's tag, with COLVENNA_RELEASE_REGISTRY naming the release registry
-# that holds it; it changes nothing in the account. It uses the
+# that holds it; it changes nothing in the account. From a later commit that changed only the tests (a
+# test fixed after the tag, #20), REFUSAL_BASE=<the tag> makes the scratch worktree the candidate's tree
+# all the same: the cases always run the candidate's install.sh. It uses the
 # caller's AWS credentials, as install.sh does (their AWS_PROFILE, or the default chain), and gives the
 # scratch environment the account and hosted zone (deploy/env.sh) that COLVENNA_ACCOUNT,
 # COLVENNA_HOSTED_ZONE_ID and COLVENNA_HOSTED_ZONE_NAME name, or else those COLVENNA_ENV's local state records
@@ -93,15 +96,27 @@ if ! absent; then
   exit 1
 fi
 manifest="release/$candidate/manifest.json"
-if [[ ! -f "$repo/$manifest" ]]; then
-  echo "No $manifest here: run this from a checkout of the candidate's tag" >&2
+if [[ -n "${REFUSAL_BASE:-}" ]]; then
+  base="$(git -C "$repo" rev-parse --verify -q "$REFUSAL_BASE^{commit}")" \
+    || { echo "REFUSAL_BASE=$REFUSAL_BASE is no commit of this clone ($usage)" >&2; exit 1; }
+  # The tests changed since, the product not: this checkout's deploy/ is the candidate's.
+  changed="$(git -C "$repo" diff --name-only "$base" HEAD -- deploy)"
+  if [[ -n "$changed" ]]; then
+    echo "REFUSAL_BASE=$REFUSAL_BASE: this checkout's deploy/ differs from it: ${changed//$'\n'/ }" >&2
+    exit 1
+  fi
+else
+  base="$(git -C "$repo" rev-parse HEAD)"
+fi
+if ! git -C "$repo" cat-file -e "$base:$manifest" 2>/dev/null; then
+  echo "No $manifest at ${REFUSAL_BASE:-this checkout}: run this from a checkout of the candidate's tag," \
+    "or give REFUSAL_BASE=<the tag>" >&2
   exit 1
 fi
-base="$(git -C "$repo" rev-parse HEAD)"
 scratch="$(mktemp -d)/tree"
 git -C "$repo" worktree add --quiet --detach "$scratch" "$base"
 trap 'git -C "$repo" worktree remove --force "$scratch"' EXIT
-echo "environment $env in $region, scratch worktree $scratch of $base, candidate $candidate" \
+echo "environment $env in $region, scratch worktree $scratch of $base, candidate $candidate, tests at $(git -C "$repo" rev-parse HEAD)" \
   | tee "$evidence/setup.txt"
 
 # edit <python>: changes the scratch manifest m (a dict) with that statement, and commits it.
@@ -151,7 +166,9 @@ refused() {
   git -C "$scratch" reset --quiet --hard "$base"
   git -C "$scratch" clean --quiet -fdx
 }
-digest() { python3 "$repo/deploy/scripts/release/manifest.py" get "$repo/$manifest" "images.$1.digest"; }
+# digest <key>: a product image's digest in the candidate's manifest (schema 3: the catalog's release is
+# not one of them, #20).
+digest() { git -C "$repo" show "$base:$manifest" | python3 -c 'import json, sys; print(json.load(sys.stdin)["images"][sys.argv[1]]["digest"])' "$1"; }
 
 if out="$(bash "$scratch/deploy/scripts/release/check-release.sh" "$candidate" --fixtures 2>&1)"; then
   verdict control PASS "$out"
@@ -169,11 +186,11 @@ commit "another candidate's name"
 refused other-candidate "not v0.0.0-dev.998's" --release v0.0.0-dev.998
 edit 'del m["images"]["bi"]'
 refused incomplete "images.bi: missing" --release "$candidate"
-edit 'pin("catalog", "sha256:" + "0" * 64)'
-refused unknown-digest "colvenna-lake-release/colvenna-catalog:$candidate is $(digest catalog) (failure: None), not sha256:$(printf '0%.0s' {1..64})" \
+edit 'pin("operator", "sha256:" + "0" * 64)'
+refused unknown-digest "colvenna-lake-release/colvenna-operator:$candidate is $(digest operator) (failure: None), not sha256:$(printf '0%.0s' {1..64})" \
   --release "$candidate"
-edit 'catalog, console = m["images"]["catalog"]["digest"], m["images"]["console"]["digest"]; pin("catalog", console); pin("console", catalog)'
-refused swapped-digests "colvenna-lake-release/colvenna-catalog:$candidate is $(digest catalog) (failure: None), not $(digest console)" \
+edit 'operator, console = m["images"]["operator"]["digest"], m["images"]["console"]["digest"]; pin("operator", console); pin("console", operator)'
+refused swapped-digests "colvenna-lake-release/colvenna-operator:$candidate is $(digest operator) (failure: None), not $(digest console)" \
   --release "$candidate"
 edit 'pin("query-engine-fe", m["images"]["query-engine-be"]["digest"])'
 refused doris-not-pinned "lib/common.sh (what install-doris.sh runs)" --release "$candidate"
@@ -186,7 +203,7 @@ commit "a change outside release/"
 refused tree-differs "outside release/" --release "$candidate"
 echo "# not committed" >>"$scratch/deploy/env.sh"
 refused uncommitted "Commit or remove local changes first" --release "$candidate"
-# Local state only (the scratch worktree's, ignored by git): as if installed from source at this commit.
+# Local state only (the scratch worktree's, ignored by git): as if installed from source at the base commit.
 mkdir -p "$scratch/deploy/.state/$env"
 printf '%s source\n' "$base" >"$scratch/deploy/.state/$env/install-mode"
 refused other-mode "was installed at $base as source, not release $candidate" --release "$candidate"
