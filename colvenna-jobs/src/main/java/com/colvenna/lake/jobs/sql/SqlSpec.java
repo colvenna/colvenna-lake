@@ -80,7 +80,8 @@ public final class SqlSpec {
 
     /**
      * What the job runs for a target of this type: the INSERT, or with checks declared, both the
-     * table's and the quarantine's in one statement set (the query read once).
+     * table's and the quarantine's in one statement set (the upstream read once, with the filters
+     * kept out of the scans: {@link SqlJob#revalidate}).
      */
     public String statement(RowType target) {
         if (quality == null) {
