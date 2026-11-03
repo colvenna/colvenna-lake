@@ -3,7 +3,6 @@ verdict it is promoted on (the release notes' 发布结论 row), the release's m
 the release notes, and the registries promote.sh accepts (never AWS ECR Public). Where a release was
 promoted from (check-tree) is tested on a scratch git history in test_promote.py."""
 import copy
-import glob
 import json
 import os
 import subprocess
@@ -127,10 +126,9 @@ class Verdict(unittest.TestCase):
             promotion.verdict(draft)
         self.assertIn("<GO / NO-GO>, not GO", str(caught.exception))
 
-    def test_every_candidate_on_record_is_no_go(self):
-        # rc.2 to rc.6 were judged NO-GO, in the notes' own words: none of them promotes.
-        paths = sorted(glob.glob(os.path.join(REPO, "release", "v1.0.0-rc.*", "notes.md")))
-        self.assertGreaterEqual(len(paths), 5)
+    def test_the_candidates_judged_no_go_are_refused(self):
+        # rc.2 to rc.6 were judged NO-GO (release/README.md, 晋升), in the notes' own words: none promotes.
+        paths = [os.path.join(REPO, "release", f"v1.0.0-rc.{n}", "notes.md") for n in range(2, 7)]
         for path in paths:
             with self.subTest(os.path.relpath(path, REPO)):
                 with open(path) as f:
@@ -190,7 +188,6 @@ class Manifest(unittest.TestCase):
             self.assertEqual(run("manifest.py", "get", path, "source.built_from").stdout, test_manifest.SHA + "\n")
             # A release's notes are its candidate's rewritten (promotion.py notes), never the template's draft.
             self.assertIn("a release's", run("manifest.py", "notes", path, stdin="").stderr)
-            self.assertEqual(run("promotion.py", "validate", path, "--release", RELEASE).returncode, 0)
 
     def test_a_candidate_s_manifest_still_names_its_own(self):
         with tempfile.TemporaryDirectory() as d:
@@ -199,7 +196,6 @@ class Manifest(unittest.TestCase):
                 json.dump(candidate_manifest(), f)
             self.assertEqual(run("manifest.py", "added", path).stdout, f"release/{CANDIDATE}\n")
             self.assertEqual(run("manifest.py", "validate", path, "--name", CANDIDATE).returncode, 0)
-            self.assertNotEqual(run("promotion.py", "validate", path).returncode, 0)
 
     def assertFound(self, change, needle):
         m = release_manifest()

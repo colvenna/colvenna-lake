@@ -50,7 +50,7 @@ fi
 registry="$COLVENNA_RELEASE_REGISTRY"
 parts="$(python3 "$tool" registry "$registry")"
 account="${parts%%$'\t'*}" region="${parts#*$'\t'}"
-release_checkout "$name"
+release_checkout "$name" || exit 1
 manifest="$RELEASE_MANIFEST" built_from="$RELEASE_BUILT_FROM"
 missing=0
 for component in fe be; do

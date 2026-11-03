@@ -201,7 +201,7 @@ RELEASE_PERFORMANCE = {
 
 # A candidate, v<major>.<minor>.<patch>-rc.<n> (-dev.<n>: a trial of the tools); a release, its version
 # alone, is one of its candidates promoted (promotion.py), never made.
-CANDIDATE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(rc|dev)\.[1-9][0-9]*$")
+CANDIDATE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(?P<kind>rc|dev)\.[1-9][0-9]*$")
 RELEASE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 # A manifest's fields (a release's has release in place of candidate, and promotion).
 FIELDS = ("schema", "candidate", "source", "generated", "images", "fixtures", "cli", "charts", "catalog",
@@ -282,6 +282,27 @@ def kind(name):
         return "release"
     raise ValueError(f"{name!r} is neither a candidate, v<major>.<minor>.<patch>-rc.<n> (-dev.<n> for a trial),"
                      " nor a release, v<major>.<minor>.<patch>")
+
+
+def images(m, fixtures=False, cli=False):
+    """{key: entry} of the images a manifest names in the release registry, each by repository, tag and
+    digest: the product's, the catalog release's copies and the platform's third-party ones; with fixtures
+    the fixtures' of both kinds too, with cli the colvenna CLI's. The images command lists them, and a
+    release's tags are these entries' (promotion.py). What is not an object is passed over (problems
+    says so)."""
+    def section(*path):
+        value = m
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        return value if isinstance(value, dict) else {}
+
+    found = {**section("images"), "catalog": section("catalog").get("image"),
+             "catalog-chart": section("catalog").get("chart"), **section("third_party")}
+    if fixtures:
+        found.update({**section("fixtures", "images"), **section("fixtures", "third_party")})
+    if cli:
+        found["cli"] = m.get("cli") if isinstance(m, dict) else None
+    return {key: entry for key, entry in found.items() if isinstance(entry, dict)}
 
 
 def names(candidate):
@@ -995,14 +1016,7 @@ def main(argv):
             if scope == "platform" or args:
                 print("\t".join((name, upstream, third_party_digest(upstream), third_party_tag(name, upstream))))
     elif command == "images" and args and set(args[1:]) <= {"--fixtures", "--cli"}:
-        m = valid(args[0])
-        rows = {**m["images"], "catalog": m["catalog"]["image"], "catalog-chart": m["catalog"]["chart"],
-                **m["third_party"]}
-        if "--fixtures" in args:
-            rows.update({**m["fixtures"]["images"], **m["fixtures"]["third_party"]})
-        if "--cli" in args:
-            rows["cli"] = m["cli"]
-        for key, image in rows.items():
+        for key, image in images(valid(args[0]), "--fixtures" in args, "--cli" in args).items():
             print("\t".join((key, image["repository"].removeprefix(f"{PREFIX}/"), image["tag"], image["digest"])))
     elif command == "running" and len(args) >= 2:
         items = [item for path in args[:-1] for item in load(path)["items"]]

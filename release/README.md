@@ -108,18 +108,18 @@ AWS_PROFILE=<profile> deploy/scripts/release/promote.sh v1.0.0-rc.<n> v1.0.0
 - `RELEASE_RECORD` 包含 C，它上面的 `release/<候选>/manifest.json` 与 C 的相同，它的 `release/<候选>/notes.md` 给出 GO（见上，`promotion.py verdict`）；
 - tag `<正式版>`、分支 `release-<正式版>` 与目录 `release/<正式版>/` 都还不存在。
 
-然后，写发布仓库之前先核对它（不符时退出码 3，读不了时退出码 1）：清单里的每个镜像——产品镜像、测试夹具镜像、第三方镜像、colvenna CLI，以及 Colvenna Catalog 发布版的镜像与 chart 的副本——都以候选的 tag 在发布仓库里，就是清单写的 digest；正式版的 tag 要么还没有，要么已经是同一个 digest。有不符的就全部列出来并停下，什么都不写。
+然后，写发布仓库之前先核对它（不符时退出码 3，读不了时退出码 1）：清单里的每个镜像——产品镜像、测试夹具镜像、第三方镜像、colvenna CLI，以及 Colvenna Catalog 发布版的镜像与 chart 的副本——都以候选的 tag 在发布仓库里，就是清单写的 digest；正式版的 tag 要么还没有，要么已经是同一个 digest。有不符的就全部列出来并停下，什么都不写。正式版的清单与发布说明也在这时、打任何 tag 之前生成：生成不了（例如验收记录里的发布说明不是候选的）就停下，发布仓库里什么都没写。
 
 **写什么。**
 
 - 发布仓库：给每个镜像按 digest 另打正式版的 tag（`crane tag`：同一个清单多一个 tag，不复制、不构建）：`<正式版>`、`<正式版>-<变体>`，第三方镜像 `<正式版>-<名字>`，colvenna CLI 与 Colvenna Catalog 的两份副本都是 `<正式版>`。候选的 tag 照旧。tag 不可改写：已经指着别的 digest 的拒绝；中途停下可以重跑，已经是同一个 digest 的保留。打完逐个读回核对。
 - `release/<正式版>/manifest.json`：候选的清单换成正式版的名字，即 `release` 代替 `candidate`、`source.tag`、每个镜像的 `tag`；digest 与其余各项都不变，`generated` 仍是生成候选的那套环境与区域。另有 `promotion`：晋升自哪个候选（`candidate`）、它的 tag 提交（`tag_commit`）、晋升的时间（`at`）、C 上候选清单的路径与 blob（`manifest`），以及验收记录（`acceptance`：记下 GO 的提交、它上面 `release/<候选>/notes.md` 的路径与 blob、`verdict: GO`）。`promotion.py validate` 校验它：换回候选的名字之后，必须是一份合法的候选清单。
 - `release/<正式版>/notes.md`：候选在 `RELEASE_RECORD` 上验收时的发布说明，标题换成正式版的名字，日期是晋升的日期，状态 `final`，第 1 节换成正式版的身份（晋升自哪个候选、链接记下 GO 的那个提交、B、清单、镜像与 chart），其余各节原样保留。
-- 只把这两个文件提交在 C 上，分支 `release-<正式版>`，再给这个提交打 annotated tag `<正式版>`。不推送任何东西。
+- 只把这两个文件提交在 C 上，分支 `release-<正式版>`，再给这个提交打 annotated tag `<正式版>`。不推送任何东西。提交或打 tag 失败时（例如本克隆的钩子拒绝了提交），脚本打印怎样删掉它写进工作区的目录与分支，删掉之后可以重跑。
 
 之后推送 tag 与分支（`git push origin <正式版> release-<正式版>`），从 `release-<正式版>` 开 PR，说明链接候选的验收记录、写明怎样晋升的。这个 PR 不 rebase，以合并提交合入，把 `release/<正式版>/` 带进 main。与候选的不同，tag 在这个分支自己的提交上，不在合并提交上，所以别的 PR 可以先合入。
 
-**演练。** `COLVENNA_RELEASE_REGISTRY=127.0.0.1:<端口>` 指向本机的回环仓库时是一次演练：提交与 tag 的说明都写明是演练、不能推送；要在单独的克隆里演练，结束后按脚本最后打印的命令删掉。离线测试 [`deploy/scripts/release/test_promote.py`](../deploy/scripts/release/test_promote.py) 就这样做：在 B → C → 验收记录的临时历史上，对本机的桩仓库（`registry_stub.py`）跑完整的晋升，核对上面的每一项拒绝，并核对晋升出的 tag 通过 `install.sh --release` 对检出的检查。
+**演练。** `COLVENNA_RELEASE_REGISTRY` 是本机的回环仓库（`127.0.0.1:<端口>` 或 `localhost:<端口>`）时是一次演练：提交与 tag 的说明都写明是演练、不能推送；要在单独的克隆里演练，结束后按脚本最后打印的命令删掉。离线测试 [`deploy/scripts/release/test_promote.py`](../deploy/scripts/release/test_promote.py) 就这样做：在 B → C → 验收记录的临时历史上，对本机的桩仓库（`registry_stub.py`）跑完整的晋升，逐项核对上面的拒绝（结论不是 GO、依据没有链接、验收记录不对、HEAD 不是 C、工作区不干净、C 不是 B 加 `release/<候选>/`、候选清单不合法或不描述 C、tag 或分支已存在、发布仓库里的镜像不符、正式版的 tag 已指着别的 digest、仓库读不了、发布说明改写不了、提交失败），中途停下之后的重跑，并对晋升出的 tag 运行 `check-release.sh v1.0.0`（ECR 的接口由一个桩 `aws` 从桩仓库代答）。
 
 **版本号不变。** 正式版不改任何 chart 的版本号，也不重新打包任何东西：
 

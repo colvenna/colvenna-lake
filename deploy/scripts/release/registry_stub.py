@@ -1,9 +1,10 @@
-"""A stub OCI registry for the offline tests of promote.sh, as Colvenna Catalog's: the distribution API's
-endpoints that crane digest and crane tag use (/v2/, manifests read and written, blobs read), held in
-memory and served over plain HTTP on 127.0.0.1, a loopback registry promote.sh accepts for a rehearsal.
+"""A stub OCI registry for the offline tests of promote.sh and check-release.sh, as Colvenna Catalog's:
+the distribution API's endpoints that crane digest and crane tag use (/v2/, manifests read and written,
+blobs read), held in memory and served over plain HTTP on 127.0.0.1, a loopback registry promote.sh
+accepts for a rehearsal. A tag is never moved to another digest, as in the release registry's ECR
+repositories, which are IMMUTABLE (deploy/aws/src/release-stack.ts); writing the digest it holds again
+is fine.
 
-  immutable  a tag is never moved to another digest (the release registry's ECR repositories are
-             IMMUTABLE, deploy/aws/src/release-stack.ts); writing the digest it holds again is fine
   denied     every read but /v2/ answers 403 DENIED: a registry that will not let these credentials in
 
 Every request is logged (requests: method, path), so a test can say what was read and written.
@@ -29,8 +30,8 @@ def digest_of(data):
 
 
 class Registry:
-    def __init__(self, immutable=True, denied=False):
-        self.immutable, self.denied = immutable, denied
+    def __init__(self, denied=False):
+        self.denied = denied
         self.blobs = {}
         self.manifests = {}  # repository -> {digest: (media type, bytes)}
         self.tags = {}  # repository -> {tag: digest}
@@ -53,17 +54,19 @@ class Registry:
         self.blobs[digest] = data
         return digest
 
-    def seed_image(self, repository, tag, layer=b"layer"):
-        """A small image (one layer, a gzipped tarball holding one file of these bytes) under the tag;
-        its manifest's digest."""
+    def seed_image(self, repository, tag, layer=b"layer", files=None, config=None):
+        """A small image under the tag, its one layer a gzipped tarball of files ({name: bytes}; by default
+        one file, layer), its config a linux/amd64 image's with config's fields; its manifest's digest."""
         uncompressed = io.BytesIO()
         with tarfile.open(fileobj=uncompressed, mode="w") as archive:
-            info = tarfile.TarInfo("layer")
-            info.size = len(layer)
-            archive.addfile(info, io.BytesIO(layer))
+            for name, data in (files or {"layer": layer}).items():
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
         compressed = gzip.compress(uncompressed.getvalue(), mtime=0)
         config = json.dumps({"architecture": "amd64", "os": "linux",
-                             "rootfs": {"type": "layers", "diff_ids": [digest_of(uncompressed.getvalue())]}}).encode()
+                             "rootfs": {"type": "layers", "diff_ids": [digest_of(uncompressed.getvalue())]},
+                             **(config or {})}).encode()
         manifest = json.dumps({
             "schemaVersion": 2, "mediaType": OCI_MANIFEST,
             "config": {"mediaType": OCI_CONFIG, "digest": self.seed_blob(config), "size": len(config)},
@@ -148,7 +151,7 @@ def _handler(registry):
                 if blob.get("digest") and blob["digest"] not in registry.blobs:
                     return self.error(400, "MANIFEST_BLOB_UNKNOWN", blob["digest"])
             tags = registry.tags.setdefault(repository, {})
-            if not DIGEST.fullmatch(reference) and registry.immutable and tags.get(reference, digest) != digest:
+            if not DIGEST.fullmatch(reference) and tags.get(reference, digest) != digest:
                 return self.error(400, "TAG_INVALID", f"{repository}:{reference} is immutable")
             media_type = self.headers.get("Content-Type") or parsed.get("mediaType") or OCI_MANIFEST
             with registry.lock:

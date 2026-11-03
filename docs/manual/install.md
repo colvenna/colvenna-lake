@@ -232,11 +232,11 @@ COLVENNA_ENV=<环境> COLVENNA_REGION=<区域> COLVENNA_ACCOUNT=<账号> \
 `check-release.sh v1.0.0` 做上一节的每项检查，有这几处不同：
 
 - 清单 `release/v1.0.0/manifest.json` 是正式版的（`deploy/scripts/release/promotion.py`）：换回候选的名字，就是候选 tag 上的 `release/<候选>/manifest.json`，每个 digest 都相同；
-- 工作区与 B 相比只在 `release/<候选>/` 与 `release/v1.0.0/` 下不同，并且就是候选的 tag 提交只加了 `release/v1.0.0/`；
+- 工作区与镜像所用的提交（清单的 `source.built_from`，与候选的相同）相比，只在 `release/<候选>/` 与 `release/v1.0.0/` 下不同，并且就是候选的 tag 提交只加了 `release/v1.0.0/`；
 - 清单的 `promotion` 记下的验收记录在本地：那个提交包含候选的 tag 提交，它上面的 `release/<候选>/notes.md` 就是记下的 blob、给出 GO，旁边的候选清单与 tag 上的相同；
 - 每个镜像以正式版的 tag（`v1.0.0`、`v1.0.0-<变体>`，第三方镜像 `v1.0.0-<名字>`，colvenna CLI 与 Colvenna Catalog 的两份副本是 `v1.0.0`）在 `COLVENNA_RELEASE_REGISTRY` 里，就是清单的 digest。
 
-之后的各步与按候选安装相同。从候选升级到它晋升的正式版，与升级到一个新的候选一样（第 7 节）：检出正式版的 tag，以 `--release v1.0.0` 重跑 `install.sh`，镜像的 digest 都不变。这条路径与按正式版的完整安装都还没有在 AWS 上实测：离线测试（`deploy/scripts/release/test_promote.py`）只核对了晋升出的 tag 能通过上面对工作区的检查。
+之后的各步与按候选安装相同。从候选升级到它晋升的正式版，与升级到一个新的候选一样（第 7 节）：检出正式版的 tag，以 `--release v1.0.0` 重跑 `install.sh`，镜像的 digest 都不变。这条路径与按正式版的完整安装都还没有在 AWS 上实测。离线测试（`deploy/scripts/release/test_promote.py`）只核对到 `check-release.sh v1.0.0` 为止：晋升出的 tag 通过上面的各项检查，它读的发布仓库是本机的桩仓库，ECR 的接口由一个桩 `aws` 代答；篡改过的 tag 与指着别的 digest 的正式版 tag 都被拒绝。
 
 ## 4. 步骤说明
 

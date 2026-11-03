@@ -28,18 +28,15 @@ A candidate is judged GO when its release notes' verdict row (section 5's 发布
 basis that links the release check (verdict).
 
 deploy/install.sh --release <release> and check-release.sh <release> take a release from a checkout of
-its tag (manifest.py reads its manifest with this module): check-tree holds the checkout to the
-manifest's promotion as well, as promote.sh made it (provenance_problems).
+its tag: manifest.py's validate and check-tree read a release's manifest with this module (problems,
+tree_problems), check-tree holding the checkout to the manifest's promotion as well, as promote.sh
+made it (provenance_problems).
 
 usage:
   promotion.py names <candidate> <release>    key, repository, the candidate's tag and the release's,
                                               tab-separated, of every image
   promotion.py verdict <notes.md>             GO, if the notes' release verdict is GO
   promotion.py assemble <work>                the release's manifest (see assemble), on stdout
-  promotion.py validate <manifest> [--release <release>]
-  promotion.py check-tree <manifest> <repo> <commit>
-                                              the manifest's git objects are the commit's, and the commit
-                                              is where the manifest says the release was promoted from
   promotion.py notes <manifest> < notes       the release notes, from the candidate's as accepted
   promotion.py registry <registry>            the release registry's kind: ecr (an ECR registry of a
                                               standard region) or loopback (a rehearsal's)
@@ -65,11 +62,6 @@ TOP = ("schema", "release", "promotion") + tuple(f for f in manifest.FIELDS if f
 PROMOTION = ("candidate", "tag_commit", "at", "manifest", "acceptance")
 
 
-def read(path):
-    with open(path) as f:
-        return f.read()
-
-
 def release_problems(name):
     if isinstance(name, str) and RELEASE.fullmatch(name):
         return []
@@ -80,7 +72,7 @@ def candidate_of_problems(candidate, release):
     """Whether the candidate is one of the release's: <release>-rc.<n> (a trial, -dev.<n>, is never one)."""
     found = release_problems(release)
     named = manifest.CANDIDATE.fullmatch(candidate) if isinstance(candidate, str) else None
-    if named is None or named[4] != "rc":
+    if named is None or named["kind"] != "rc":
         found.append(f"candidate: {candidate!r} is not v<major>.<minor>.<patch>-rc.<n> (n from 1)")
     elif not found and not candidate.startswith(f"{release}-rc."):
         found.append(f"{candidate} is not a candidate of {release}: it promotes to {candidate.split('-rc.')[0]}")
@@ -101,19 +93,10 @@ def source_tag(release, candidate):
 
 
 def image_entries(m):
-    """The objects of a manifest that each name an image in the release registry by repository, tag and
-    digest: the product's, the fixtures', the third-party ones, the CLI's and the catalog's copies.
-    Whatever is not an object is passed over (problems says so)."""
-    def values(value):
-        return list(value.values()) if isinstance(value, dict) else []
-
-    def part(value, key):
-        return value.get(key) if isinstance(value, dict) else None
-
-    fixtures, catalog = part(m, "fixtures"), part(m, "catalog")
-    entries = [*values(part(m, "images")), *values(part(fixtures, "images")), *values(part(fixtures, "third_party")),
-               *values(part(m, "third_party")), part(m, "cli"), part(catalog, "image"), part(catalog, "chart")]
-    return [entry for entry in entries if isinstance(entry, dict) and isinstance(entry.get("tag"), str)]
+    """The entries of every image a manifest names (manifest.images: the product's, the fixtures', the
+    third-party ones, the CLI's and the catalog's copies), each with its tag: what promote.sh tags."""
+    return [entry for entry in manifest.images(m, fixtures=True, cli=True).values()
+            if isinstance(entry.get("tag"), str)]
 
 
 def retagged(m, old, new):
@@ -175,8 +158,8 @@ def build(candidate, params):
 def assemble(work):
     """The release's manifest from what promote.sh gathered in the directory work: candidate.json (the
     candidate's manifest at its tag commit) and params.json (build's params)."""
-    return build(json.loads(read(os.path.join(work, "candidate.json"))),
-                 json.loads(read(os.path.join(work, "params.json"))))
+    return build(json.loads(manifest.read(os.path.join(work, "candidate.json"))),
+                 json.loads(manifest.read(os.path.join(work, "params.json"))))
 
 
 def problems(m, release=None):
@@ -430,15 +413,9 @@ def main(argv):
         for row in names(*args):
             print("\t".join(row))
     elif command == "verdict" and len(args) == 1:
-        print(verdict(read(args[0])))
+        print(verdict(manifest.read(args[0])))
     elif command == "assemble" and len(args) == 1:
         print(json.dumps(assemble(args[0]), indent=2, ensure_ascii=False))
-    elif command == "validate" and len(args) in (1, 3) and (len(args) == 1 or args[1] == "--release"):
-        valid(args[0], args[2] if len(args) == 3 else None)
-    elif command == "check-tree" and len(args) == 3:
-        found = tree_problems(valid(args[0]), args[1], args[2])
-        if found:
-            raise ValueError(f"{args[0]}:\n  " + "\n  ".join(found))
     elif command == "notes" and len(args) == 1:
         print(notes(valid(args[0]), sys.stdin.read()), end="")
     elif command == "registry" and len(args) == 1:

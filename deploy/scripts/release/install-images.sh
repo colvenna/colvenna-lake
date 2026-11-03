@@ -32,11 +32,11 @@
 source "$(dirname "$0")/../lib/common.sh"
 assert_account
 usage="usage: install-images.sh <candidate or release> third-party [--fixtures]|flink|catalog|operator|doris|console|bi|readers|cli"
-candidate="${1:?$usage}"
+release="${1:?$usage}"
 component="${2:?$usage}"
 tool="$DEPLOY_DIR/scripts/release/manifest.py"
-manifest="$REPO_DIR/release/$candidate/manifest.json"
-python3 "$tool" validate "$manifest" --name "$candidate"
+manifest="$REPO_DIR/release/$release/manifest.json"
+python3 "$tool" validate "$manifest" --name "$release"
 sha="$(committed_sha)"
 registry="${COLVENNA_RELEASE_REGISTRY:?COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com: the release registry}"
 parts="$(python3 "$tool" registry "$registry")"
@@ -101,7 +101,7 @@ case "$component" in
     echo "$image" | tee "$STATE_DIR/flink-image-ref.txt"
     ;;
   catalog)
-    bash "$DEPLOY_DIR/scripts/catalog/fetch-catalog.sh" --release "$candidate"
+    bash "$DEPLOY_DIR/scripts/catalog/fetch-catalog.sh" --release "$release"
     ;;
   operator)
     declare -A placed

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# committed_sha and the release candidates' tree rule, for every deploy script: lib/common.sh sources
-# it, and the scripts that belong to no environment (deploy/scripts/release/deploy-registry.sh,
-# check-release.sh) source it alone. Needs REPO_DIR. check-release.sh holds a tag's checkout to the
-# directories its manifest says the tag adds (lib/release.sh); same_product is the coarser rule the
-# acceptance tests judge a repeated install by.
+# committed_sha, has_commit and same_product, for every deploy script: lib/common.sh sources it, and the
+# scripts that belong to no environment (deploy/scripts/release/deploy-registry.sh, check-release.sh,
+# promote.sh) source it without common.sh. Needs REPO_DIR. A tag's checkout is held to the directories
+# its manifest says the tag adds by lib/release.sh; same_product is the coarser rule the acceptance
+# tests judge a repeated install by.
 
 # Refuses to build or deploy anything but a clean, committed tree; prints its SHA.
 committed_sha() {
