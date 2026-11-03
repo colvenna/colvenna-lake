@@ -58,7 +58,8 @@ public final class SqlJob {
      * colvenna-operator's validation again, with the planner defaults {@code SqlValidate.main}
      * uses: an unordered changelog shows as the sink upsert materializer the planner would add.
      * Then, for a table with checks declared, switches that materializer off in {@code tEnv} for
-     * the job's own statement.
+     * the job's own statement, and the pushing of filters into scans, so that the table's INSERT
+     * and the quarantine's read each upstream once.
      */
     static SqlValidate.Result revalidate(TableEnvironment tEnv, SqlSpec spec) {
         SqlValidate.Result result = SqlValidate.validate(tEnv, spec);
@@ -77,6 +78,12 @@ public final class SqlJob {
             // Paimon merges by the target's key itself, and refuses Flink's upsert materializer,
             // which the declared checks (a filter on a changelog) can make the planner add.
             tEnv.getConfig().set("table.exec.sink.upsert-materialize", "NONE");
+            // The table's INSERT and the quarantine's would each get their own scan of a streamed
+            // upstream, the checks pushed into it, and two readers would advance its one consumer:
+            // the consumer would follow whichever committed last, ahead of the table's commits or
+            // behind them, and so would what the operator measures from it (#28). Unpushed, the
+            // checks leave one scan that both INSERTs share; the rows are filtered as before.
+            tEnv.getConfig().set("table.optimizer.source.predicate-pushdown-enabled", "false");
         }
         return result;
     }

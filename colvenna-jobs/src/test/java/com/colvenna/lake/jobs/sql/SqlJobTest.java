@@ -177,6 +177,101 @@ class SqlJobTest {
         }
     }
 
+    /**
+     * The table of #28's run: DWD orders with their customer's region (a lookup), and three checks
+     * on columns of the streamed ODS orders. Its two INSERTs each got a scan of ods.orders with
+     * their own checks pushed into it: two readers advancing one Paimon consumer, which is the
+     * job's position for the operator (and what keeps upstream snapshots from expiring). The
+     * consumer followed whichever committed last, one checkpoint ahead of the table's commits or
+     * behind them, and the layer latency read 9 s where the table took 41 s.
+     */
+    @Test
+    void aCheckedTableReadsEachStreamedUpstreamOnce() throws Exception {
+        TableEnvironment tEnv = TableEnvironment.create(EnvironmentSettings.inStreamingMode());
+        Options options = new Options();
+        options.set("warehouse", warehouse.toUri().toString());
+        try (Catalog catalog = ColvennaCatalog.register(tEnv, options)) {
+            catalog.createDatabase("ods", false);
+            catalog.createDatabase("dwd", false);
+            for (String ddl :
+                    List.of(
+                            "CREATE TABLE ods.orders (id BIGINT NOT NULL, customer_id BIGINT NOT"
+                                    + " NULL, amount DECIMAL(12, 2) NOT NULL, state VARCHAR(32) NOT"
+                                    + " NULL, note VARCHAR(64), version_no BIGINT NOT NULL, PRIMARY"
+                                    + " KEY (id) NOT ENFORCED) WITH ('bucket' = '2',"
+                                    + " 'changelog-producer' = 'input', 'sequence.field' ="
+                                    + " 'version_no')",
+                            "CREATE TABLE ods.customers (id BIGINT NOT NULL, region VARCHAR(16) NOT"
+                                    + " NULL, PRIMARY KEY (id) NOT ENFORCED) WITH ('bucket' = '2',"
+                                    + " 'changelog-producer' = 'input')",
+                            "CREATE TABLE dwd.orders (order_id BIGINT NOT NULL, customer_id BIGINT"
+                                    + " NOT NULL, region VARCHAR(16) NOT NULL, amount DECIMAL(12, 2)"
+                                    + " NOT NULL, state VARCHAR(32) NOT NULL, version_no BIGINT NOT"
+                                    + " NULL, PRIMARY KEY (order_id) NOT ENFORCED) WITH ('bucket' ="
+                                    + " '1', 'changelog-producer' = 'lookup')",
+                            "CREATE TABLE dwd.orders_quarantine (order_id BIGINT NOT NULL,"
+                                    + " customer_id BIGINT NOT NULL, region VARCHAR(16) NOT NULL,"
+                                    + " amount DECIMAL(12, 2) NOT NULL, state VARCHAR(32) NOT NULL,"
+                                    + " version_no BIGINT NOT NULL, colvenna_rule STRING,"
+                                    + " colvenna_flagged_at TIMESTAMP_LTZ(3), PRIMARY KEY (order_id)"
+                                    + " NOT ENFORCED) WITH ('bucket' = '1')")) {
+                tEnv.executeSql(ddl).await();
+            }
+            Map<String, Object> spec = new LinkedHashMap<>();
+            spec.put("targetDatabase", "dwd");
+            spec.put("targetTable", "orders");
+            spec.put(
+                    "query",
+                    "SELECT o.id AS order_id, o.customer_id, c.region, o.amount, o.state,"
+                            + " o.version_no FROM (SELECT *, PROCTIME() AS pt FROM ods.orders) AS o"
+                            + " JOIN ods.customers FOR SYSTEM_TIME AS OF o.pt AS c ON"
+                            + " o.customer_id = c.id");
+            spec.put("primaryKey", List.of("order_id"));
+            spec.put("upstream", List.of("ods.orders", "ods.customers"));
+            spec.put("streams", List.of("ods.orders"));
+            spec.put(
+                    "quality",
+                    Map.of(
+                            "quarantine",
+                            "orders_quarantine",
+                            "rules",
+                            List.of(
+                                    Map.of("column", "customer_id", "kind", "notNull"),
+                                    Map.of(
+                                            "column",
+                                            "state",
+                                            "kind",
+                                            "allowed",
+                                            "values",
+                                            List.of("created", "paid", "shipped")),
+                                    Map.of("column", "amount", "kind", "range", "min", "0"))));
+            SqlSpec checked = SqlSpec.parse(JSON.writeValueAsString(spec));
+            SqlJob.revalidate(tEnv, checked);
+            RowType target =
+                    ((FileStoreTable) catalog.getTable(Identifier.create("dwd", "orders")))
+                            .rowType();
+            String statement = checked.statement(target);
+            assertTrue(statement.startsWith("EXECUTE STATEMENT SET"), statement);
+            String plan;
+            try (var rows =
+                    tEnv.executeSql(statement.replaceFirst("^EXECUTE ", "EXPLAIN ")).collect()) {
+                plan = String.valueOf(rows.next().getField(0));
+            }
+            String executed = plan.substring(plan.indexOf("== Optimized Execution Plan =="));
+            // Both INSERTs, from one reader of ods.orders.
+            assertEquals(2, count(executed, "Sink(table=[colvenna.dwd."), plan);
+            assertEquals(1, count(executed, "TableSourceScan(table=[[colvenna, ods, orders"), plan);
+        }
+    }
+
+    private static int count(String text, String part) {
+        int n = 0;
+        for (int i = text.indexOf(part); i >= 0; i = text.indexOf(part, i + part.length())) {
+            n++;
+        }
+        return n;
+    }
+
     @Test
     void comparesTheOutputWithTheTargetAsideFromNullability() {
         List<DataField> output =

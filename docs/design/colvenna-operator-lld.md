@@ -545,7 +545,7 @@ spec:
 | `KeyColumnMissing` | 主键列不在输出里 |
 | `UnorderedChangelog` | 同一主键的更新可能乱序到达 sink，见下文 |
 
-校验通过后，结论里有输出 schema（Paimon 字段）、流读的表和 lookup 的表。作业启动时还会再校验一次，因为上游 schema 可能已经变了。这次再校验和校验 Job 一样用 planner 的默认配置，所以同样查得出 `UnorderedChangelog`。声明了 `quality` 的表，作业在再校验之后才把 `table.exec.sink.upsert-materialize` 设为 `NONE`，再跑自己的语句：`quality` 的检查是 changelog 上的过滤，可能让 planner 加上 upsert materializer，而 Paimon 不接受它。
+校验通过后，结论里有输出 schema（Paimon 字段）、流读的表和 lookup 的表。作业启动时还会再校验一次，因为上游 schema 可能已经变了。这次再校验和校验 Job 一样用 planner 的默认配置，所以同样查得出 `UnorderedChangelog`。声明了 `quality` 的表，作业在再校验之后才把 `table.exec.sink.upsert-materialize` 设为 `NONE`，再跑自己的语句：`quality` 的检查是 changelog 上的过滤，可能让 planner 加上 upsert materializer，而 Paimon 不接受它。同时它关掉过滤条件下推（`table.optimizer.source.predicate-pushdown-enabled=false`）：否则目标表和隔离表的两条 INSERT 各自把检查推进自己对流读上游的扫描，同一个上游被读两次，两个读端推进同一个 consumer；consumer 跟着最后提交的那个走，可能比目标表的提交早一个 checkpoint，也可能晚一个，由它算出的积压与层间延迟随之偏差一个 checkpoint 间隔（[#28](https://github.com/colvenna/colvenna-lake/issues/28)：标记测得 41 秒，指标的中位数 9 秒）。不下推时两条 INSERT 共用一次扫描，行照旧由 Flink 过滤；代价是这类表的上游扫描不再按查询里的条件裁剪文件。
 
 ### 目标表与 changelog
 
