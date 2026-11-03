@@ -28,12 +28,26 @@ A candidate keeps a copy of both, the same digests, in its own release registry
 (colvenna-lake-release/colvenna-catalog and colvenna-lake-release/charts/colvenna-catalog, tagged
 <candidate>), and records them, the pin's fields beside them, under catalog (schema 3).
 
+A release, v<major>.<minor>.<patch>, is never made here: one of its candidates judged GO is promoted
+to it, nothing rebuilt (promote.sh; its manifest, release/<release>/manifest.json, is promotion.py's:
+the candidate's under the release's names, with the same digests). deploy/install.sh --release and
+check-release.sh take either: validate, check-tree, kind, added, names and images read both,
+and hold a release's to promotion.py.
+
 usage:
   manifest.py assemble <work>                 the manifest, from what make-manifest.sh gathered in
                                               <work> (see assemble), on stdout
-  manifest.py validate <manifest> [--candidate <candidate>]
-  manifest.py names <candidate>               key, repository, tag of every image, the third-party
-                                              ones too, tab-separated
+  manifest.py validate <manifest> [--name <name>]
+                                              a candidate's or a release's manifest (of that name)
+  manifest.py check-tree <manifest> <repo> <commit>
+                                              the git objects the manifest pins are the commit's (a
+                                              release's: and where it was promoted from, promotion.py)
+  manifest.py kind <name>                     candidate or release: the names install.sh --release
+                                              takes (make-manifest.sh makes candidates only)
+  manifest.py added <manifest>                the directories its tag adds to the commit it was built
+                                              from, one per line
+  manifest.py names <name>                    key, repository, tag of every image, the third-party
+                                              ones too, tab-separated, of a candidate or a release
   manifest.py regions <region>,<region>...    the regions, one per line, if they are two or more
                                               distinct standard ones
   manifest.py registry <registry>             its account and region, tab-separated, if it is an ECR
@@ -86,6 +100,7 @@ import http.client
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -184,7 +199,13 @@ RELEASE_PERFORMANCE = {
     "method": "docs/uat/performance.md",
 }
 
-CANDIDATE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(rc|dev)\.[1-9][0-9]*)?$")
+# A candidate, v<major>.<minor>.<patch>-rc.<n> (-dev.<n>: a trial of the tools); a release, its version
+# alone, is one of its candidates promoted (promotion.py), never made.
+CANDIDATE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(rc|dev)\.[1-9][0-9]*$")
+RELEASE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+# A manifest's fields (a release's has release in place of candidate, and promotion).
+FIELDS = ("schema", "candidate", "source", "generated", "images", "fixtures", "cli", "charts", "catalog",
+          "installer", "uat_cases", "required_cases", "configurations", "performance", "third_party")
 SHA = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -253,9 +274,19 @@ def third_party_scope(scope, images=None):
     return {name: upstream for name, (s, upstream) in (images or third_party_images()).items() if s == scope}
 
 
+def kind(name):
+    """candidate or release: what install.sh --release installs under that name; ValueError if neither."""
+    if isinstance(name, str) and CANDIDATE.fullmatch(name):
+        return "candidate"
+    if isinstance(name, str) and RELEASE.fullmatch(name):
+        return "release"
+    raise ValueError(f"{name!r} is neither a candidate, v<major>.<minor>.<patch>-rc.<n> (-dev.<n> for a trial),"
+                     " nor a release, v<major>.<minor>.<patch>")
+
+
 def names(candidate):
     """Every image's key, repository (under the prefix) and tag, the third-party ones' and the
-    catalog release's copies too."""
+    catalog release's copies too: a candidate's, or a release's under its own name."""
     every = {**PRODUCT_IMAGES, **FIXTURE_IMAGES, "cli": CLI}
     return ([(key, repository, tag(candidate, variant)) for key, (repository, variant) in every.items()]
             + [(key, repository, candidate) for key, repository in CATALOG_IMAGES.items()]
@@ -615,16 +646,14 @@ def problems(m, candidate=None):
         need(not ids, f"{len(ids)} AWS account ids: a manifest names repositories and digests, and the"
              " release registry is the installer's COLVENNA_RELEASE_REGISTRY")
 
-    if not fields(m, "", ("schema", "candidate", "source", "generated", "images", "fixtures", "cli", "charts",
-                          "catalog", "installer", "uat_cases", "required_cases", "configurations",
-                          "performance", "third_party")):
+    if not fields(m, "", FIELDS):
         if isinstance(m, dict):
             accounts()
         return found
     need(type(m["schema"]) is int and m["schema"] == SCHEMA, f"schema: {m['schema']!r}, not {SCHEMA}")
     name = m["candidate"]
     need(isinstance(name, str) and CANDIDATE.fullmatch(name) is not None,
-         f"candidate: {name!r} is not v<major>.<minor>.<patch>[-rc.<n>|-dev.<n>]")
+         f"candidate: {name!r} is not v<major>.<minor>.<patch>-rc.<n> (or -dev.<n>)")
     if candidate is not None:
         need(name == candidate, f"candidate: the manifest is {name!r}'s, not {candidate}'s")
     if fields(m["source"], "source", ("repository", "built_from", "tag")):
@@ -808,9 +837,63 @@ def load(path):
         raise ValueError(f"{path}: not JSON ({error})") from None
 
 
-def valid(path, candidate=None):
+def git(repo, *args):
+    """git's output, or None when it fails (an object that is not there)."""
+    out = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def tree_problems(m, repo, commit):
+    """Where the commit does not hold the git objects a valid candidate's manifest pins: each chart's
+    directory (charts.<chart>.tree), deploy/install.sh and deploy/uninstall.sh (installer), and the UAT
+    cases with the commit they last changed in (uat_cases). install.sh --release and promote.sh run from
+    a checkout of the candidate's tag, which must hold them."""
+    pinned = [(f"charts.{chart}.tree", value["path"], value["tree"]) for chart, value in m["charts"].items()]
+    pinned += [(f"installer.{script}.blob", value["path"], value["blob"]) for script, value in m["installer"].items()]
+    pinned.append(("uat_cases.blob", m["uat_cases"]["path"], m["uat_cases"]["blob"]))
+    found = []
+    for where, path, want in pinned:
+        have = git(repo, "rev-parse", "-q", "--verify", f"{commit}:{path}")
+        if have != want:
+            found.append(f"{where}: {path} is {have or 'not there'} at {commit}, not the manifest's {want}")
+    cases = m["uat_cases"]
+    last = git(repo, "log", "-1", "--format=%H", commit, "--", cases["path"])
+    if last != cases["commit"]:
+        found.append(f"uat_cases.commit: {cases['path']} last changed in {last or 'no commit'} up to {commit}, not"
+                     f" the manifest's {cases['commit']}")
+    return found
+
+
+def promotion_module():
+    """promotion.py, which defines a release's manifest. It imports this module, so it is imported here only
+    when a release's manifest is read."""
+    import promotion
+    return promotion
+
+
+def is_release(m):
+    """Whether the manifest is a release's (promotion.py: it has release where a candidate's has candidate)."""
+    return isinstance(m, dict) and "release" in m
+
+
+def added(m):
+    """The directories a valid manifest's tag adds to the commit it was built from: release/<candidate>; a
+    release's tag adds release/<release> to its candidate's."""
+    if is_release(m):
+        return [f"release/{m['promotion']['candidate']}", f"release/{m['release']}"]
+    return [f"release/{m['candidate']}"]
+
+
+def installed_tree_problems(m, repo, commit):
+    """Where the commit is not what a valid manifest, a candidate's or a release's, describes."""
+    return promotion_module().tree_problems(m, repo, commit) if is_release(m) else tree_problems(m, repo, commit)
+
+
+def valid(path, name=None):
+    """The manifest at path, a candidate's or a release's (of that name, if given); ValueError if it is not
+    valid."""
     m = load(path)
-    found = problems(m, candidate)
+    found = promotion_module().problems(m, name) if is_release(m) else problems(m, name)
     if found:
         raise ValueError(f"{path}:\n  " + "\n  ".join(found))
     return m
@@ -832,7 +915,7 @@ def doris_source(release, fe, be):
         images = m.get("images", {})
         if all(images.get(key, {}).get("digest") == digest and images.get(key, {}).get("repository") == repository
                for key, digest in ((fe_key, fe), (be_key, be))):
-            found.append((m.get("generated", {}).get("at", ""), m["candidate"], repository))
+            found.append((m.get("generated", {}).get("at", ""), m.get("candidate") or m.get("release"), repository))
     return max(found)[2] if found else None
 
 
@@ -882,11 +965,18 @@ def main(argv):
     command, args = (argv[0], argv[1:]) if argv else ("", [])
     if command == "assemble" and len(args) == 1:
         print(json.dumps(assemble(args[0]), indent=2, ensure_ascii=False))
-    elif command == "validate" and len(args) in (1, 3) and (len(args) == 1 or args[1] == "--candidate"):
+    elif command == "validate" and len(args) in (1, 3) and (len(args) == 1 or args[1] == "--name"):
         valid(args[0], args[2] if len(args) == 3 else None)
+    elif command == "check-tree" and len(args) == 3:
+        found = installed_tree_problems(valid(args[0]), args[1], args[2])
+        if found:
+            raise ValueError(f"{args[0]}:\n  " + "\n  ".join(found))
+    elif command == "kind" and len(args) == 1:
+        print(kind(args[0]))
+    elif command == "added" and len(args) == 1:
+        print("\n".join(added(valid(args[0]))))
     elif command == "names" and len(args) == 1:
-        if not CANDIDATE.fullmatch(args[0]):
-            raise ValueError(f"{args[0]} is not a candidate's name: v<major>.<minor>.<patch>[-rc.<n>|-dev.<n>]")
+        kind(args[0])
         for row in names(args[0]):
             print("\t".join(row))
     elif command == "regions" and len(args) == 1:
@@ -932,7 +1022,11 @@ def main(argv):
     elif command == "required-cases" and len(args) == 1:
         print("\n".join(required_cases(read(args[0]))))
     elif command == "notes" and len(args) == 1:
-        print(notes(valid(args[0]), sys.stdin.read()), end="")
+        m = valid(args[0])
+        if is_release(m):
+            raise ValueError(f"{args[0]} is a release's: its notes are its candidate's, which promote.sh rewrites"
+                             " (promotion.py notes)")
+        print(notes(m, sys.stdin.read()), end="")
     elif command == "catalog" and len(args) <= 1:
         value = catalog_pin()
         for field in args[0].split(".") if args else []:

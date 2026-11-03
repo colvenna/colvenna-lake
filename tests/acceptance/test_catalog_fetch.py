@@ -439,6 +439,15 @@ class MakeManifestRegistryTest(unittest.TestCase):
                 self.assertGreater(len(stacks), 0)
                 self.assertIn("is of nothing", out.stderr)
 
+    def test_a_release_s_name_is_refused_before_anything(self):
+        # A release (v1.0.0) is promoted from a candidate judged GO (promote.sh), never made.
+        scratch = Scratch(self)
+        out = scratch.run("deploy/scripts/release/make-manifest.sh", "v1.0.0")
+        self.assertEqual(out.returncode, 1)
+        self.assertIn("v1.0.0 is a release's name: a release is promoted from a candidate judged GO", out.stderr)
+        self.assertIn("promote.sh <candidate> v1.0.0", out.stderr)
+        self.assertEqual([c for c in scratch.calls() if not c.startswith("aws sts")], [])
+
     def test_a_malformed_catalog_registry_stops_it_before_anything(self):
         scratch, out, stacks = self.run_it(COLVENNA_CATALOG_REGISTRY="ghcr.io/colvenna/")
         self.assertEqual(out.returncode, 1)

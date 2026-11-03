@@ -1,11 +1,13 @@
 # 发布候选
 
-这个目录保存每个发布候选的清单与发布说明：
+这个目录保存每个发布候选与正式版的清单与发布说明：
 
 | 文件 | 内容 |
 | --- | --- |
 | `<候选>/manifest.json` | 发布清单：全部产品镜像、测试夹具镜像与[第三方镜像](#第三方镜像)在发布仓库里的仓库名、tag 与 digest（第三方镜像另记它固定的上游引用），colvenna CLI 二进制的 SHA-256，四个 Helm chart 的版本与目录的 git tree，候选固定的 [Colvenna Catalog](#colvenna-catalog) 发布版（版本、tag 的提交、`built_from`，以及它的镜像与 chart 在发布仓库里的副本），`install.sh` 与 `uninstall.sh` 的 blob，UAT 用例文档的提交与 blob，支持的配置（安装方式，以及验收的两个以上标准区域），本次的必需用例集合，以及性能验收口径。清单不写发布仓库的地址、账号，也不写生成它的执行身份（见下文“发布仓库”）。格式与校验见 [`deploy/scripts/release/manifest.py`](../deploy/scripts/release/manifest.py) |
 | `<候选>/notes.md` | 发布说明，由 [`notes-template.md`](notes-template.md) 生成，链接七项交付物的固定版本 |
+| `<正式版>/manifest.json` | 正式版的清单：GO 候选的清单换成正式版的名字，digest 全都不变，另有 `promotion` 记下晋升自哪里（见[晋升](#晋升)）。格式与校验见 [`deploy/scripts/release/promotion.py`](../deploy/scripts/release/promotion.py) |
+| `<正式版>/notes.md` | 正式版的发布说明：GO 候选验收时的发布说明换成正式版的名字，第 1 节是正式版的身份 |
 
 **组件与商标。** 候选的镜像建立在 Apache 软件基金会（ASF）的几个项目之上：Flink 基础镜像（`flink-base`）是官方 [Apache Flink](https://flink.apache.org/) 1.20.4 镜像加 [Apache Paimon](https://paimon.apache.org/) 2.0.0 的 jar 与 JDBC 驱动；查询引擎镜像（`query-engine`）是基于 [Apache Doris](https://doris.apache.org/) 4.1.4 的修改构建（自带的 Paimon 读取器换成了对 Paimon 2.0.0 编译的读取器），不是 ASF 的发布，所以不以 Doris 命名；BI 镜像（`colvenna-bi`）基于 [Apache Superset](https://superset.apache.org/)。第三方镜像里还有 Apache Flink Kubernetes Operator、Apache Doris 的 Doris Operator、[Apache Polaris](https://polaris.apache.org/) 与 [Apache Airflow](https://airflow.apache.org/) 等的上游镜像，原样复制。各镜像怎样命名与依据，见[商标与命名](trademarks.md)。
 
@@ -13,15 +15,15 @@
 
 Colvenna Lake 不是 ASF 的项目；其他各方的商标见[商标与命名](trademarks.md)第 1 节。
 
-候选的名字是 `v<主>.<次>.<修订>-rc.<n>`，例如 `v1.0.0-rc.1`；正式版本去掉 `-rc.<n>`。`v0.0.0-dev.<n>` 只用来试验工具，不入库。
+候选的名字是 `v<主>.<次>.<修订>-rc.<n>`，例如 `v1.0.0-rc.1`；正式版本去掉 `-rc.<n>`，由判为 GO 的候选晋升而来，不重新构建（见[晋升](#晋升)）。`v0.0.0-dev.<n>` 只用来试验工具，不入库，也不能晋升。
 
-**Helm chart 的版本。** 本仓库四个 chart 的版本号都还是 `0.1.0`，不随候选变化。固定 chart 的是清单里各 chart 目录的 git tree（`charts.<chart>.tree`）：两个候选的 chart 是否相同，比较 tree，不看版本号。colvenna-catalog 的 chart 是 Colvenna Catalog 发布的，以它的版本与 digest 固定（`catalog.chart`）。
+**Helm chart 的版本。** 本仓库四个 chart 的版本号都还是 `0.1.0`，不随候选变化，晋升为正式版时也不改（见[晋升](#晋升)的“版本号不变”）。固定 chart 的是清单里各 chart 目录的 git tree（`charts.<chart>.tree`）：两个候选的 chart 是否相同，比较 tree，不看版本号。colvenna-catalog 的 chart 是 Colvenna Catalog 发布的，以它的版本与 digest 固定（`catalog.chart`）。
 
 ## 候选与 tag
 
 - 镜像在提交 B 上构建：用 B 从源码装好一套带 `--fixtures` 的环境，`make-manifest.sh` 再从这套环境生成清单。
 - 清单记下 B（`source.built_from`）。B 加上 `release/<候选>/` 这一个目录，就是提交 C；annotated tag `<候选>` 指向 C。
-- `deploy/install.sh --release <候选>` 只在与 B 相比只有 `release/` 不同的工作区里运行，所以检出 tag 就能安装，之后的 main 不行。
+- `deploy/install.sh --release <候选>` 只在与 B 相比只有 `release/<候选>/` 不同、并且有清单固定的 git 对象（四个 chart 目录的 tree、`install.sh` 与 `uninstall.sh` 的 blob、UAT 用例文档的提交与 blob）的工作区里运行，所以检出 tag 就能安装，之后的 main 不行。
 - tag 所在提交里的 `notes.md` 只记录候选的身份（候选名、B、日期、验收的区域与性能验收口径）。交付物的状态、报告的链接与结论要等材料齐备，另行提交到 main 的 `release/<候选>/notes.md`；发布检查链接那个提交。
 
 ## 发布仓库
@@ -33,7 +35,7 @@ Colvenna Lake 不是 ASF 的项目；其他各方的商标见[商标与命名](t
 - 名字与环境自己的仓库对应：`colvenna-lake-<环境>/colvenna-jobs` 对应 `colvenna-lake-release/colvenna-jobs`；第三方镜像都在 `colvenna-lake-release/third-party`，对应环境的 `colvenna-lake-<环境>/third-party`；
 - 查询引擎的 FE 与 BE 在 `colvenna-lake-release/query-engine`，清单的键是 `query-engine-fe`、`query-engine-be`（#258）。`v1.0.0-rc.1` 与 `v1.0.0-rc.2` 的清单写的是产品旧名字的发布仓库（[商标与命名](trademarks.md)第 5、7 节），本仓库的工具不按它们安装，它们的 tag 与清单都不变。复制进一套环境自己的仓库时，FE 与 BE 的 tag 不是候选名，而是 `<DORIS_TAG>-fe-<digest 的前 12 位十六进制>`、`-be-<…>`（`lib/common.sh` 的 `doris_tag`），与从源码安装时相同：每个固定的 digest 有自己的 tag，跨越一次重新固定的升级不会撞上旧 digest 的 tag（#278）；
 - Colvenna Catalog 发布版的副本：服务端镜像在 `colvenna-lake-release/colvenna-catalog`，Helm chart（OCI 制品）在 `colvenna-lake-release/charts/colvenna-catalog`，digest 与 Colvenna Catalog 自己发布的相同，tag 都是 `<候选>`（见下文 [Colvenna Catalog](#colvenna-catalog)）；
-- tag 是 `<候选>` 或 `<候选>-<变体>`（例如 `v1.0.0-rc.1-kafka`、`v1.0.0-rc.1-fe`），第三方镜像是 `<候选>-<名字>`（例如 `<候选>-debezium-server`），不可改写；
+- tag 是 `<候选>` 或 `<候选>-<变体>`（例如 `v1.0.0-rc.1-kafka`、`v1.0.0-rc.1-fe`），第三方镜像是 `<候选>-<名字>`（例如 `<候选>-debezium-server`），不可改写。候选晋升为正式版时，同一批 digest 另打上 `<正式版>`、`<正式版>-<变体>` 与 `<正式版>-<名字>`（见[晋升](#晋升)）；
 - 推送时扫描；删栈时保留仓库，没有生命周期规则，任何环境的卸载都不碰它。环境名 `release` 因此是保留名；
 - 默认没有仓库策略，只有仓库所在账号能经 IAM 读取。要让别的账号安装（#212），在 `COLVENNA_RELEASE_PULL_ACCOUNTS` 里列出它们的 12 位账号 ID（CDK 上下文 `-c pullAccounts=<id>,<id>`）：每个仓库加一条仓库策略，只允许这些账号的 IAM 身份（`arn:aws:iam::<id>:root`）拉取镜像——`ecr:BatchGetImage`、`ecr:GetDownloadUrlForLayer`、`ecr:BatchCheckLayerAvailability`，不能推送、删除或列出，也从不开放给 `*`。
 - 拉取账号里，安装者的身份还要有自己账号的 IAM 权限：上面三项（资源可以限定为发布仓库的 ARN），以及 `ecr:GetAuthorizationToken`（取 registry 的登录凭证；这一项只能授予 `*`，它本身不给任何仓库的访问）。
@@ -79,9 +81,55 @@ aws ecr list-images --region us-west-2 --repository-name colvenna-lake-release/f
    git push origin <候选>
    ```
 
-   **注意：** 从 B 到这个 PR 合入之间，main 上不能合入任何别的 PR，这个 PR 也不能 rebase 到更新的 main 上。否则 C 与 B 相比就不止 `release/` 不同，`install.sh --release` 在 tag 上也会拒绝安装，只能从新的 main 重新生成候选。
+   **注意：** 从 B 到这个 PR 合入之间，main 上不能合入任何别的 PR，这个 PR 也不能 rebase 到更新的 main 上。否则 C 与 B 相比就不止 `release/<候选>/` 不同，`install.sh --release` 在 tag 上也会拒绝安装，只能从新的 main 重新生成候选。
 
 4. 材料齐备后，按模板的规则补全 `notes.md` 里尖括号的内容，另行提交到 main。
+
+## 晋升
+
+正式版不重新构建：某个候选判为 GO 之后，把它晋升为正式版（#4 的 2026-10-31 决定，与 Colvenna Catalog 的做法相同，见它的 [Promoting a GO candidate](https://github.com/colvenna/colvenna-catalog/blob/v1.0.0/docs/development.md#promoting-a-go-candidate)）。候选只能晋升为它自己的版本，例如 `v1.0.0-rc.7` 晋升为 `v1.0.0`。`make-manifest.sh` 拒绝正式版的名字：正式版只能晋升而来。
+
+**什么时候。** 候选的材料齐备，main 上它的 `release/<候选>/notes.md` 第 5 节“发布结论”一行给出 GO 之后。结果一栏写 `GO`（可以加粗或写成代码，后面可以接“。”或“：”再写理由），依据一栏要链接发布检查。结果是 `NO-GO`、还是模板的 `<GO / NO-GO>`，或依据没有链接（例如只写 `发布检查 #2`）时，都不能晋升。`v1.0.0-rc.2` 到 `v1.0.0-rc.6` 都是 NO-GO。
+
+**怎样晋升。** 由发布仓库的维护者，在候选 tag 的干净检出上运行：
+
+```bash
+git fetch origin --tags
+git checkout v1.0.0-rc.<n>
+AWS_PROFILE=<profile> deploy/scripts/release/promote.sh v1.0.0-rc.<n> v1.0.0
+```
+
+发布仓库与 `make-manifest.sh` 的相同：执行者账号在 `COLVENNA_RELEASE_REGION`（默认 `us-west-2`）里的那个，或 `COLVENNA_RELEASE_REGISTRY` 给出的 ECR 仓库；从不是 ECR Public。`RELEASE_RECORD` 指定记下结论的提交，默认 `origin/main`（先 `git fetch origin`）。证据（含执行身份）在 `deploy/.state/release/<正式版>/`，不入库。crane 取自 `deploy/.tools/`（`deploy/scripts/foundation/install-crane.sh`）。
+
+**先核对，再写。** 读任何仓库之前，以下任一项不满足就停下（退出码 2）：
+
+- 工作区干净，HEAD 就是候选的 tag 提交 C；C 与 B 相比只多了 `release/<候选>/`；
+- 候选的清单合法，并且固定的就是 C 的 git 对象（`manifest.py check-tree`：四个 chart 目录的 tree、`install.sh` 与 `uninstall.sh` 的 blob、UAT 用例文档的提交与 blob）；
+- `RELEASE_RECORD` 包含 C，它上面的 `release/<候选>/manifest.json` 与 C 的相同，它的 `release/<候选>/notes.md` 给出 GO（见上，`promotion.py verdict`）；
+- tag `<正式版>`、分支 `release-<正式版>` 与目录 `release/<正式版>/` 都还不存在。
+
+然后，写发布仓库之前先核对它（不符时退出码 3，读不了时退出码 1）：清单里的每个镜像——产品镜像、测试夹具镜像、第三方镜像、colvenna CLI，以及 Colvenna Catalog 发布版的镜像与 chart 的副本——都以候选的 tag 在发布仓库里，就是清单写的 digest；正式版的 tag 要么还没有，要么已经是同一个 digest。有不符的就全部列出来并停下，什么都不写。
+
+**写什么。**
+
+- 发布仓库：给每个镜像按 digest 另打正式版的 tag（`crane tag`：同一个清单多一个 tag，不复制、不构建）：`<正式版>`、`<正式版>-<变体>`，第三方镜像 `<正式版>-<名字>`，colvenna CLI 与 Colvenna Catalog 的两份副本都是 `<正式版>`。候选的 tag 照旧。tag 不可改写：已经指着别的 digest 的拒绝；中途停下可以重跑，已经是同一个 digest 的保留。打完逐个读回核对。
+- `release/<正式版>/manifest.json`：候选的清单换成正式版的名字，即 `release` 代替 `candidate`、`source.tag`、每个镜像的 `tag`；digest 与其余各项都不变，`generated` 仍是生成候选的那套环境与区域。另有 `promotion`：晋升自哪个候选（`candidate`）、它的 tag 提交（`tag_commit`）、晋升的时间（`at`）、C 上候选清单的路径与 blob（`manifest`），以及验收记录（`acceptance`：记下 GO 的提交、它上面 `release/<候选>/notes.md` 的路径与 blob、`verdict: GO`）。`promotion.py validate` 校验它：换回候选的名字之后，必须是一份合法的候选清单。
+- `release/<正式版>/notes.md`：候选在 `RELEASE_RECORD` 上验收时的发布说明，标题换成正式版的名字，日期是晋升的日期，状态 `final`，第 1 节换成正式版的身份（晋升自哪个候选、链接记下 GO 的那个提交、B、清单、镜像与 chart），其余各节原样保留。
+- 只把这两个文件提交在 C 上，分支 `release-<正式版>`，再给这个提交打 annotated tag `<正式版>`。不推送任何东西。
+
+之后推送 tag 与分支（`git push origin <正式版> release-<正式版>`），从 `release-<正式版>` 开 PR，说明链接候选的验收记录、写明怎样晋升的。这个 PR 不 rebase，以合并提交合入，把 `release/<正式版>/` 带进 main。与候选的不同，tag 在这个分支自己的提交上，不在合并提交上，所以别的 PR 可以先合入。
+
+**演练。** `COLVENNA_RELEASE_REGISTRY=127.0.0.1:<端口>` 指向本机的回环仓库时是一次演练：提交与 tag 的说明都写明是演练、不能推送；要在单独的克隆里演练，结束后按脚本最后打印的命令删掉。离线测试 [`deploy/scripts/release/test_promote.py`](../deploy/scripts/release/test_promote.py) 就这样做：在 B → C → 验收记录的临时历史上，对本机的桩仓库（`registry_stub.py`）跑完整的晋升，核对上面的每一项拒绝，并核对晋升出的 tag 通过 `install.sh --release` 对检出的检查。
+
+**版本号不变。** 正式版不改任何 chart 的版本号，也不重新打包任何东西：
+
+- 本仓库的四个 chart（`colvenna-bi`、`colvenna-console`、`colvenna-monitoring`、`colvenna-operator`）不打包、不发布，安装时取自 tag 的工作区，以清单里各 chart 目录的 git tree 固定（上文“Helm chart 的版本”）。没有谁按版本号取用它们，版本号也就不标识发布。反过来，改 `Chart.yaml` 就改了 chart 目录，在 `release/<正式版>/` 之外留下改动：正式版的检出不再是 GO 候选验收过的那棵树，只能当作新的候选重新构建、重新验收。所以它们保持候选里的版本号（`0.1.0`），正式版的 chart 与 GO 候选的逐字节相同。
+- colvenna-catalog 的 chart 是 Colvenna Catalog 的发布物，按 digest 固定（`catalog.chart`），本仓库从不重新打包；正式版用的就是候选副本的同一个 digest。
+- 镜像也不改：镜像的标签、colvenna CLI 打印的版本（构建它的提交 B）都与候选的相同。正式版的名字只出现在 tag、清单与发布说明里。
+
+Colvenna Catalog 晋升时把它 chart 的 `version` 与 `appVersion` 改成正式版的版本号再打包，并逐文件比对，因为它的 chart 是按版本号发布、供别人取用的 OCI 制品；本仓库没有这样的制品，所以没有这一步，正式版的记录里也没有 chart 的比对。
+
+**按正式版安装。** 检出正式版的 tag，以 `deploy/install.sh --release <正式版>` 安装（[部署指南](../docs/manual/install.md#按正式版安装)）。`check-release.sh <正式版>` 核对的与候选的相同，另外：检出与 B 相比只在 `release/<候选>/` 与 `release/<正式版>/` 下不同，并且就是候选的 tag 提交只加了 `release/<正式版>/`；清单换回候选的名字就是 tag 上候选的清单，digest 相同；记下的验收记录在本地、给出 GO；每个镜像以正式版的 tag 在发布仓库里，就是这些 digest。
 
 ## Colvenna Catalog
 

@@ -29,18 +29,6 @@ chmod 0755 "$tools_dir/helm"
 rm -r "$tools_dir/linux-$arch"
 
 # crane copies images between repositories by digest (deploy/scripts/doris/copy-images.sh).
-crane_version=v0.22.1
-case "$arch" in
-  arm64) crane_archive=go-containerregistry_Linux_arm64.tar.gz
-    crane_sha256=898c0cff975f898a33e8c4580bdafb0e7c02c7faa33374e946762f97c4ab7110 ;;
-  amd64) crane_archive=go-containerregistry_Linux_x86_64.tar.gz
-    crane_sha256=0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0 ;;
-esac
-curl -fsSL "https://github.com/google/go-containerregistry/releases/download/$crane_version/$crane_archive" \
-  -o "$tools_dir/$crane_archive"
-printf '%s  %s\n' "$crane_sha256" "$tools_dir/$crane_archive" | sha256sum --check
-tar -xzf "$tools_dir/$crane_archive" -C "$tools_dir" crane
-chmod 0755 "$tools_dir/crane"
-rm "$tools_dir/$crane_archive"
+bash "$(dirname "$0")/install-crane.sh" "$tools_dir"
 
 echo "kubectl, Helm and crane are in $tools_dir"

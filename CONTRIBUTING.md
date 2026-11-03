@@ -45,6 +45,7 @@ runs the file checks, markdownlint, actionlint and the two gates above. The CI w
   ```bash
   (cd deploy/aws && npm ci && npm run check && npm test)
   shellcheck -x deploy/*.sh deploy/scripts/*/*.sh
+  bash deploy/scripts/foundation/install-crane.sh   # the pinned crane, into deploy/.tools, for test_promote.py
   python3 -m unittest discover -s deploy/scripts/release -p 'test_*.py'
   python3 -m unittest discover -s deploy/scripts/redaction -p 'test_*.py'
   python3 -m unittest discover -s deploy/scripts/rename -p 'test_*.py'

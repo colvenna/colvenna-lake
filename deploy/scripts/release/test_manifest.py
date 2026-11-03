@@ -799,8 +799,8 @@ class Command(unittest.TestCase):
             self.assertEqual(built.returncode, 0, built.stderr)
             with open(path, "w") as f:
                 f.write(built.stdout)
-            self.assertEqual(self.run_cli("validate", path, "--candidate", "v1.0.0-rc.1").returncode, 0)
-            wrong = self.run_cli("validate", path, "--candidate", "v1.0.0-rc.2")
+            self.assertEqual(self.run_cli("validate", path, "--name", "v1.0.0-rc.1").returncode, 0)
+            wrong = self.run_cli("validate", path, "--name", "v1.0.0-rc.2")
             self.assertEqual(wrong.returncode, 1)
             self.assertIn("v1.0.0-rc.2", wrong.stderr)
             rows = self.run_cli("images", path, "--fixtures", "--cli").stdout.splitlines()

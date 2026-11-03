@@ -48,6 +48,13 @@ source "$(dirname "$0")/../lib/common.sh"
 assert_account
 candidate="${1:?usage: COLVENNA_ENV=<env> make-manifest.sh <candidate>, e.g. v1.0.0-rc.1}"
 tool="$DEPLOY_DIR/scripts/release/manifest.py"
+# A release (v<major>.<minor>.<patch>) is never made: one of its candidates judged GO is promoted to it
+# (promote.sh), its images the candidate's.
+if [[ "$(python3 "$tool" kind "$candidate")" != candidate ]]; then
+  echo "$candidate is a release's name: a release is promoted from a candidate judged GO" \
+    "(deploy/scripts/release/promote.sh <candidate> $candidate), never made" >&2
+  exit 1
+fi
 names="$(python3 "$tool" names "$candidate")"
 sha="$(committed_sha)"
 out="$REPO_DIR/release/$candidate"
@@ -369,7 +376,7 @@ with open(path, "w") as f:
     }, f)
 PY
 python3 "$tool" assemble "$work" >"$work/manifest.json"
-python3 "$tool" validate "$work/manifest.json" --candidate "$candidate"
+python3 "$tool" validate "$work/manifest.json" --name "$candidate"
 git -C "$REPO_DIR" show "$sha:release/notes-template.md" | python3 "$tool" notes "$work/manifest.json" >"$work/notes.md"
 cp "$work/manifest.json" "$ev/manifest.json"
 # Into the tree only once both are whole: a run that stops before leaves it clean, to run again.

@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# Checks that this checkout can install release candidate <candidate> (deploy/install.sh --release
-# runs it before it touches anything, and stops if it fails):
-#   - its manifest, release/<candidate>/manifest.json, is complete and valid (manifest.py), its
-#     third-party images the ones deploy/images/third-party.tsv pins;
+# Checks that this checkout can install release candidate <candidate>, or the release <release> promoted
+# from one (deploy/install.sh --release runs it before it touches anything, and stops if it fails):
+#   - its manifest, release/<name>/manifest.json, is complete and valid (manifest.py; a release's,
+#     promotion.py: its candidate's under the release's names, the same digests), its third-party
+#     images the ones deploy/images/third-party.tsv pins;
 #   - the tree is clean and differs from the commit the images were built from (source.built_from)
-#     under release/ only, as the candidate's tag does;
+#     under the directories its tag adds alone, release/<candidate>/ (and release/<release>/ for a
+#     release), and holds the git objects the manifest pins; a release's checkout is also its
+#     candidate's tag commit with release/<release>/ added, and the candidate's release notes at the
+#     recorded commit judge it GO (lib/release.sh's release_checkout);
 #   - the Doris images it pins are the ones lib/common.sh pins, which install-doris.sh runs;
 #   - every image it pins, the third-party ones, the colvenna CLI's and the copies of the Colvenna
 #     Catalog release's image and chart too, is in the release registry COLVENNA_RELEASE_REGISTRY (the
 #     manifest names no registry; any account and region holding the candidate, wherever the install
-#     goes) under its tag with its digest;
+#     goes) under its tag with its digest: a release's tags (<release>[-<variant>], <release>-<name>)
+#     on its candidate's digests;
 #   - the colvenna CLI's image holds the very binaries the manifest pins, by SHA-256;
 #   - the catalog's copies are the release the tree pins (deploy/images/colvenna-catalog.json, which
 #     manifest.py's validation compares the manifest's catalog with): each one's config, read by
@@ -19,52 +24,34 @@
 # Reads only, with the pull rights another account gets (ecr:BatchGetImage,
 # ecr:GetDownloadUrlForLayer); every problem is listed before it fails.
 # Usage: COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com \
-#          deploy/scripts/release/check-release.sh <candidate> [--fixtures]
-#   --fixtures  the fixtures' images too (install.sh --release <candidate> --fixtures)
+#          deploy/scripts/release/check-release.sh <candidate or release> [--fixtures]
+#   --fixtures  the fixtures' images too (install.sh --release <name> --fixtures)
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/../../.." && pwd)"
 REPO_DIR="$repo"
 # shellcheck source-path=SCRIPTDIR source=../lib/git.sh
 source "$repo/deploy/scripts/lib/git.sh"
+# shellcheck source-path=SCRIPTDIR source=../lib/release.sh
+source "$repo/deploy/scripts/lib/release.sh"
 tool="$repo/deploy/scripts/release/manifest.py"
-candidate="${1:?usage: check-release.sh <candidate> [--fixtures]}"
+name="${1:?usage: check-release.sh <candidate or release> [--fixtures]}"
 images=(--cli)
 case "${2:-}" in
   "") ;;
   --fixtures) images+=(--fixtures) ;;
-  *) echo "usage: check-release.sh <candidate> [--fixtures]" >&2; exit 1 ;;
+  *) echo "usage: check-release.sh <candidate or release> [--fixtures]" >&2; exit 1 ;;
 esac
-python3 "$tool" names "$candidate" >/dev/null
+python3 "$tool" kind "$name" >/dev/null
 if [[ -z "${COLVENNA_RELEASE_REGISTRY:-}" ]]; then
   echo "COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com: the release registry to install" \
-    "$candidate from (release/README.md)" >&2
+    "$name from (release/README.md)" >&2
   exit 1
 fi
 registry="$COLVENNA_RELEASE_REGISTRY"
 parts="$(python3 "$tool" registry "$registry")"
 account="${parts%%$'\t'*}" region="${parts#*$'\t'}"
-manifest="$repo/release/$candidate/manifest.json"
-if [[ ! -f "$manifest" ]]; then
-  echo "No release/$candidate/manifest.json in this checkout: check out the candidate's tag" \
-    "(git checkout $candidate)" >&2
-  exit 1
-fi
-python3 "$tool" validate "$manifest" --candidate "$candidate"
-built_from="$(python3 "$tool" get "$manifest" source.built_from)"
-if [[ -n "$(git -C "$repo" status --porcelain)" ]]; then
-  echo "Commit or remove local changes first; a release installs from the candidate's tree" >&2
-  exit 1
-fi
-if ! has_commit "$built_from"; then
-  echo "This clone lacks $built_from, the commit $candidate's images were built from: git fetch origin --tags" >&2
-  exit 1
-fi
-if ! same_product "$built_from" HEAD; then
-  echo "This tree differs from $built_from, the commit $candidate's images were built from, outside" \
-    "release/: check out the tag $candidate. Differing:" >&2
-  product_changes "$built_from" HEAD | head -20 | sed 's/^/  /' >&2
-  exit 1
-fi
+release_checkout "$name"
+manifest="$RELEASE_MANIFEST" built_from="$RELEASE_BUILT_FROM"
 missing=0
 for component in fe be; do
   pinned="$(sed -n "s/^DORIS_${component^^}_DIGEST=//p" "$repo/deploy/scripts/lib/common.sh")"
@@ -155,8 +142,8 @@ else
   missing=$((missing + 1))
 fi
 if ((count == 0 || missing > 0)); then
-  echo "$missing problems with the $count images $candidate pins in the release registry $registry" >&2
+  echo "$missing problems with the $count images $name pins in the release registry $registry" >&2
   exit 1
 fi
-echo "release $candidate: $count images in $registry, the CLI's binaries and Colvenna Catalog" \
+echo "release $name: $count images in $registry, the CLI's binaries and Colvenna Catalog" \
   "$(python3 "$tool" get "$manifest" catalog.candidate)'s image and chart checked, built from $built_from"
