@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# What deploy/install.sh --release <candidate> does in place of building a component's images:
-# copies them by digest from the release registry COLVENNA_RELEASE_REGISTRY (any account and region
-# holding the candidate, wherever the environment is; the manifest names repositories, tags and
-# digests, no registry) into the environment's own repositories, and records them as the build
-# scripts do, so the steps after it and the acceptance tests read them unchanged. Nothing is built.
-# check-release.sh has checked the manifest, the registry, the Doris digests and the CLI's binaries
-# before the install began.
+# What deploy/install.sh --release <name> does in place of building a component's images, for a release
+# candidate or a release promoted from one (whose manifest is the candidate's under the release's names,
+# the same digests): copies them by digest from the release registry COLVENNA_RELEASE_REGISTRY (any
+# account and region holding the candidate, wherever the environment is; the manifest names
+# repositories, tags and digests, no registry) into the environment's own repositories, and records
+# them as the build scripts do, so the steps after it and the acceptance tests read them unchanged.
+# Nothing is built. check-release.sh has checked the manifest, the registry, the Doris digests and the
+# CLI's binaries before the install began.
 #   third-party  the platform's third-party        tagged <name>-<digest prefix> in
 #             images (--fixtures: the fixtures'    colvenna-lake-<env>/third-party, as
 #             too)                                 foundation/copy-third-party.sh does; nothing to record
@@ -25,17 +26,17 @@
 # The others are tagged in the environment's repository as their builds would tag them, by this
 # commit (<sha>, <sha>-<variant>), beside the tags they have already.
 # Usage: COLVENNA_ENV=<env> COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com \
-#          deploy/scripts/release/install-images.sh <candidate> <component> [--fixtures]
+#          deploy/scripts/release/install-images.sh <candidate or release> <component> [--fixtures]
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=../lib/common.sh
 source "$(dirname "$0")/../lib/common.sh"
 assert_account
-usage="usage: install-images.sh <candidate> third-party [--fixtures]|flink|catalog|operator|doris|console|bi|readers|cli"
-candidate="${1:?$usage}"
+usage="usage: install-images.sh <candidate or release> third-party [--fixtures]|flink|catalog|operator|doris|console|bi|readers|cli"
+release="${1:?$usage}"
 component="${2:?$usage}"
 tool="$DEPLOY_DIR/scripts/release/manifest.py"
-manifest="$REPO_DIR/release/$candidate/manifest.json"
-python3 "$tool" validate "$manifest" --candidate "$candidate"
+manifest="$REPO_DIR/release/$release/manifest.json"
+python3 "$tool" validate "$manifest" --name "$release"
 sha="$(committed_sha)"
 registry="${COLVENNA_RELEASE_REGISTRY:?COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com: the release registry}"
 parts="$(python3 "$tool" registry "$registry")"
@@ -100,7 +101,7 @@ case "$component" in
     echo "$image" | tee "$STATE_DIR/flink-image-ref.txt"
     ;;
   catalog)
-    bash "$DEPLOY_DIR/scripts/catalog/fetch-catalog.sh" --release "$candidate"
+    bash "$DEPLOY_DIR/scripts/catalog/fetch-catalog.sh" --release "$release"
     ;;
   operator)
     declare -A placed

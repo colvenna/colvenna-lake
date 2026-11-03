@@ -73,7 +73,10 @@ jobs:
       - run: npm test
         working-directory: deploy/aws
       - run: shellcheck -x deploy/*.sh deploy/scripts/*/*.sh
-      # The release manifest's schema and the required cases' markers (deploy/scripts/release/manifest.py).
+      # The pinned crane, which promote.sh's offline tests run against a stub registry (test_promote.py).
+      - run: bash deploy/scripts/foundation/install-crane.sh
+      # The release manifest's schema and the required cases' markers (deploy/scripts/release/manifest.py),
+      # and the promotion of a GO candidate to a release (promotion.py, promote.sh).
       - run: python3 -m unittest discover -s deploy/scripts/release -p 'test_*.py'
       # The check that keeps deployment values out of the repository (#248), which pre-commit runs.
       - run: python3 -m unittest discover -s deploy/scripts/redaction -p 'test_*.py'

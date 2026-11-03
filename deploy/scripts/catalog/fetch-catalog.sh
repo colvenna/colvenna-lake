@@ -21,10 +21,11 @@
 # an ECR registry is read with the AWS credentials, with pull rights only; any other, anonymously too.
 # With --release <candidate>, from the copies Colvenna Lake's candidate keeps in its own release
 # registry COLVENNA_RELEASE_REGISTRY (colvenna-lake-release/..., as its manifest names them;
-# check-release.sh has checked them), the same digests. A run that stopped can run again.
+# check-release.sh has checked them), the same digests; with --release <release>, a release promoted
+# from one, the same copies by the same digests. A run that stopped can run again.
 # Usage: COLVENNA_ENV=<env> [COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>]] fetch-catalog.sh
 #        COLVENNA_ENV=<env> COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com \
-#          fetch-catalog.sh --release <candidate>
+#          fetch-catalog.sh --release <candidate or release>
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=../lib/common.sh
 source "$(dirname "$0")/../lib/common.sh"
@@ -56,7 +57,7 @@ case "${1:-}" in
     parts="$(python3 "$tool" registry "$registry")"
     region="${parts#*$'\t'}"
     manifest="$REPO_DIR/release/$release/manifest.json"
-    python3 "$tool" validate "$manifest" --candidate "$release"
+    python3 "$tool" validate "$manifest" --name "$release"
     from="Colvenna Lake's release $release"
     image_source="$registry/$(python3 "$tool" get "$manifest" catalog.image.repository)"
     chart_source="$registry/$(python3 "$tool" get "$manifest" catalog.chart.repository)"

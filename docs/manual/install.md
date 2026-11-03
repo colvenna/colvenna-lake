@@ -191,7 +191,7 @@ COLVENNA_ENV=<环境> COLVENNA_REGION=<区域> COLVENNA_ACCOUNT=<账号> \
 
 - 给了 `COLVENNA_RELEASE_REGISTRY`，形如 `<账号>.dkr.ecr.<标准区域>.amazonaws.com`；
 - 清单存在、完整、字段合法，并且就是所给候选的（`deploy/scripts/release/manifest.py validate`），其中的第三方镜像就是 tag 上 `deploy/images/third-party.tsv` 固定的；
-- 工作区没有未提交的改动，并且与镜像所用的提交（清单的 `source.built_from`）相比，只有 `release/` 下不同。候选的 tag 正是这样；之后的 main 改过别的文件，会被拒绝。本地没有那个提交时，先 `git fetch origin --tags`；
+- 工作区没有未提交的改动，并且与镜像所用的提交（清单的 `source.built_from`）相比，只有 tag 加的目录 `release/<候选>/` 下不同；清单固定的 git 对象（四个 chart 目录的 tree、`install.sh` 与 `uninstall.sh` 的 blob、UAT 用例文档的提交与 blob，`manifest.py check-tree`）就是工作区的。候选的 tag 正是这样；之后的 main 改过别的文件，会被拒绝。本地没有那个提交时，先 `git fetch origin --tags`；
 - 清单的两个查询引擎 digest（`query-engine-fe`、`query-engine-be`）就是 `deploy/scripts/lib/common.sh` 固定的（`install-doris.sh` 运行的正是它们）；
 - 清单固定的每个镜像（带 `--fixtures` 时也包括测试夹具的；第三方镜像也一样）与 colvenna CLI，都在 `COLVENNA_RELEASE_REGISTRY` 里，以清单写的 digest、带着清单写的 tag；
 - 发布仓库里 colvenna CLI 的镜像，装的正是清单记下 SHA-256 的那三个二进制（下载它唯一的一层逐个核对）。安装到别的账号时，发布仓库要先允许这个账号拉取（[发布候选](../../release/README.md)的 `COLVENNA_RELEASE_PULL_ACCOUNTS`），否则这项检查就停下。
@@ -214,6 +214,29 @@ COLVENNA_ENV=<环境> COLVENNA_REGION=<区域> COLVENNA_ACCOUNT=<账号> \
 其余步骤（栈、Helm release、`verify`）与从源码安装相同，Helm chart 与脚本都取自 tag 的工作区。按候选安装不需要 Maven、Docker 与 Go；仍需要 JDK 的 `keytool`（`doris` 步骤建信任库）与 Node.js（部署栈）。重跑、`--from`、`--only` 的用法不变，每次都要带 `--release`。
 
 **升级到一个候选。** 在已有环境上检出新候选的 tag，以 `--release` 重跑 `install.sh`，各步照常收敛（第 7 节）。
+
+### 按正式版安装
+
+正式版（例如 `v1.0.0`）由判为 GO 的候选晋升而来，不重新构建：镜像就是那个候选的，digest 相同，只在发布仓库里另打了正式版的 tag；chart 与脚本也就是候选的，版本号不变（[发布候选](../../release/README.md#晋升)）。按它安装与按候选安装一样，只是名字换成正式版：
+
+```bash
+export AWS_PROFILE=<目标账号的 profile>
+export COLVENNA_RELEASE_REGISTRY=<发布仓库的账号>.dkr.ecr.<发布仓库的区域>.amazonaws.com
+git fetch origin --tags                                     # 晋升记录指向 main 上记下 GO 结论的提交，本地要有它
+git checkout v1.0.0
+COLVENNA_ENV=<环境> COLVENNA_REGION=<区域> COLVENNA_ACCOUNT=<账号> \
+  COLVENNA_HOSTED_ZONE_ID=<托管区 ID> COLVENNA_HOSTED_ZONE_NAME=<托管区名> \
+  deploy/install.sh --release v1.0.0 [--fixtures]
+```
+
+`check-release.sh v1.0.0` 做上一节的每项检查，有这几处不同：
+
+- 清单 `release/v1.0.0/manifest.json` 是正式版的（`deploy/scripts/release/promotion.py`）：换回候选的名字，就是候选 tag 上的 `release/<候选>/manifest.json`，每个 digest 都相同；
+- 工作区与镜像所用的提交（清单的 `source.built_from`，与候选的相同）相比，只在 `release/<候选>/` 与 `release/v1.0.0/` 下不同，并且就是候选的 tag 提交只加了 `release/v1.0.0/`；
+- 清单的 `promotion` 记下的验收记录在本地：那个提交包含候选的 tag 提交，它上面的 `release/<候选>/notes.md` 就是记下的 blob、给出 GO，旁边的候选清单与 tag 上的相同；
+- 每个镜像以正式版的 tag（`v1.0.0`、`v1.0.0-<变体>`，第三方镜像 `v1.0.0-<名字>`，colvenna CLI 与 Colvenna Catalog 的两份副本是 `v1.0.0`）在 `COLVENNA_RELEASE_REGISTRY` 里，就是清单的 digest。
+
+之后的各步与按候选安装相同。从候选升级到它晋升的正式版，与升级到一个新的候选一样（第 7 节）：检出正式版的 tag，以 `--release v1.0.0` 重跑 `install.sh`，镜像的 digest 都不变。这条路径与按正式版的完整安装都还没有在 AWS 上实测。离线测试（`deploy/scripts/release/test_promote.py`）只核对到 `check-release.sh v1.0.0` 为止：晋升出的 tag 通过上面的各项检查，它读的发布仓库是本机的桩仓库，ECR 的接口由一个桩 `aws` 代答；篡改过的 tag 与指着别的 digest 的正式版 tag 都被拒绝。
 
 ## 4. 步骤说明
 

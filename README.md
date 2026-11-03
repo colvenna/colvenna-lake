@@ -109,14 +109,15 @@ export COLVENNA_ENV=demo COLVENNA_REGION=us-west-2 COLVENNA_ACCOUNT=111122223333
   COLVENNA_HOSTED_ZONE_ID=Z0123456789EXAMPLE COLVENNA_HOSTED_ZONE_NAME=example.com
 ```
 
-Then install either a release candidate or the source:
+Then install either a release candidate (or a release promoted from one) or the source:
 
 ```bash
-# A release candidate: the images and the colvenna CLI its manifest pins, copied by digest; nothing is
-# built. From v1.0.0-rc.2 on, COLVENNA_RELEASE_REGISTRY names the release registry to copy from.
-git checkout <candidate>
+# A release candidate, or a release promoted from one (v1.0.0, the same images): the images and the
+# colvenna CLI its manifest pins, copied by digest; nothing is built. From v1.0.0-rc.2 on,
+# COLVENNA_RELEASE_REGISTRY names the release registry to copy from.
+git checkout <candidate or release>
 COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com \
-  deploy/install.sh --release <candidate>               # add --fixtures for the test sources
+  deploy/install.sh --release <candidate or release>    # add --fixtures for the test sources
 
 # Or from source: every image built from this commit, but Colvenna Catalog's, its pinned release
 # pulled by digest from GitHub Container Registry.

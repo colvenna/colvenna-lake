@@ -13,7 +13,7 @@
 #
 # usage: COLVENNA_ENV=<env> [COLVENNA_REGION=<region> COLVENNA_ACCOUNT=<account>
 #        COLVENNA_HOSTED_ZONE_ID=<id> COLVENNA_HOSTED_ZONE_NAME=<zone> [COLVENNA_ENTRY_DOMAIN=<domain>]]
-#        deploy/install.sh [--fixtures] [--release <candidate>] [--list] [--from <step>] [--only <step>]
+#        deploy/install.sh [--fixtures] [--release <name>] [--list] [--from <step>] [--only <step>]
 #   COLVENNA_ENV the environment (deploy/env.sh): its stacks, resources, entry domain and local
 #               state are its own
 #   the settings, needed the first time and recorded once checked (deploy/env.sh):
@@ -24,9 +24,10 @@
 #               account, for the web entry's names
 #   COLVENNA_ENTRY_DOMAIN the entry's domain within the zone, <app>.<domain> (default
 #               colvenna-<env>.<zone>)
-#   --release   installs release candidate <candidate> from a checkout of its tag: the images and the
-#               colvenna CLI its manifest (release/<candidate>/manifest.json) pins, copied by digest
-#               from the release registry
+#   --release   installs release candidate <name> (v1.0.0-rc.<n>), or the release promoted from one
+#               (v1.0.0, release/README.md), from a checkout of its tag: the images and the colvenna
+#               CLI its manifest (release/<name>/manifest.json; a release's is its candidate's under
+#               its own tags, the same digests) pins, copied by digest from the release registry
 #               COLVENNA_RELEASE_REGISTRY=<account>.dkr.ecr.<region>.amazonaws.com (required with it;
 #               the manifest names no registry); nothing is built. Without it, every image is built
 #               here from this commit (the development path), but Colvenna Catalog's, its release's,
@@ -54,7 +55,7 @@ fixtures=false from="" only="" list=false release=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --fixtures) fixtures=true ;;
-    --release) release="${2:?--release <candidate>}"; shift ;;
+    --release) release="${2:?--release <candidate or release>}"; shift ;;
     --list) list=true ;;
     --from) from="${2:?--from <step>}"; shift ;;
     --only) only="${2:?--only <step>}"; shift ;;
