@@ -268,6 +268,8 @@ issue: 2
 
 **UAT-DEP-07（`us-east-2`）为什么没有运行。** 按用例文档第 7 节，每个区域要卸载本区域从零新建的那套环境，`us-east-2` 是 `uate2`。协调人 2026-11-02 06:16 决定不拆除环境、留给下一个候选，所以卸载 `uate2` 的运行没有执行，这一例记为 NOT_RUN，不改成“不适用”。
 
+**附注：UAT-DEP-07（`us-east-2`）的补充证据（2026-11-03）。** 判定之后，协调人 2026-11-03 决定在下一个候选开始之前卸载 `uate2`，好在 `v1.0.0-rc.7` 上从零重装。卸载用本候选 tag 上的工具（`uninstall.sh --yes uate2`，00:05–00:57 UTC），卸载前后核对账号里的资源（`check-uninstall.sh`），4 项检查都 PASS：`uninstall-finished`、`settings-record-gone`、`nothing-of-it-left`（`uate2` 的桶、库、DNS、日志组、OIDC、镜像仓库、角色、密钥、栈、用户池、卷都已不在），`others-untouched`（其他环境与发布仓库的 99 项都与卸载前相同）。证据在 `<证据目录>/uate2-us-east-2/uninstall/`、`uninstall-before/`，`runs.tsv` 多了一行 `uninstall`。这是本候选判定之后补的证据：上文的统计与逐例结果照判定时的写（UAT-DEP-07 NOT_RUN），发布结论仍是 NO-GO，阻塞项仍是 #22。
+
 ## 6. `v1.0.0-rc.5` 之后：本候选的变更与本次的表现
 
 | 问题 | 本候选的变更 | 本次的表现 |
