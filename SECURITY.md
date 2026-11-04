@@ -1,12 +1,16 @@
 # Security
 
-Security fixes are made for the latest release. The deployment's security points are in the [install manual](docs/manual/install.md#6-安全要点), and the exposed surfaces with how each is protected are in [section 12.1 of the High-Level Design](docs/design/hld-realtime-lakehouse.md#121-边界与威胁模型) (both in Chinese).
+Colvenna Lake 1.0.0 is its first release, promoted from the release candidate `v1.0.0-rc.7` without a rebuild ([release notes](release/v1.0.0/notes.md)). Security fixes are made for the latest release only. A fix is made on `main` and ships in a new patch release (1.0.1, then 1.0.2, ...), accepted and promoted from its own release candidate as 1.0.0 was ([release candidates](release/README.md#晋升), in Chinese). A release never changes once made: its tag never moves, so an earlier release, and any release candidate, does not get the fix. Colvenna Lake's images are not published: build them from the release's tag ([install manual](docs/manual/install.md)).
+
+Upgrades in 1.x: a release upgrades an environment in place, keeping its data, by `deploy/install.sh` run again from the release's tag ([install manual](docs/manual/install.md#7-升级), section 7), and its candidate's UAT runs that upgrade (UAT-DEP-06). Its release notes name any step of its own. Going back to an earlier release, and an upgrade that skips a release, are not tested.
+
+The deployment's security points are in the [install manual](docs/manual/install.md#6-安全要点), and the exposed surfaces with how each is protected are in [section 12.1 of the High-Level Design](docs/design/hld-realtime-lakehouse.md#121-边界与威胁模型) (both in Chinese).
 
 ## Reporting a vulnerability
 
 Do not put passwords, tokens, keys, cloud credentials, deployment values (account IDs, domains, ARNs, internal addresses) or exploit details in an ordinary issue or pull request.
 
-For a confidential report, use GitHub's **Report a vulnerability** feature when it is enabled for this repository. If it is not, contact the repository owner through an existing private channel before sharing any sensitive detail. Name the affected component, the release or commit, and the steps to reproduce.
+For a confidential report, use GitHub's private vulnerability reporting: **Report a vulnerability** on the repository's [Security tab](https://github.com/colvenna/colvenna-lake/security). Only the reporter and the maintainers see the report. Name the affected component, the release or commit, and the steps to reproduce. A vulnerability in the catalog server itself goes to [Colvenna Catalog](https://github.com/colvenna/colvenna-catalog/security).
 
 ## Security model in brief
 

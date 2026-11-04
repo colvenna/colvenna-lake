@@ -7,7 +7,8 @@ status: final
 <!--
 deploy/scripts/release/promote.sh 把 v1.0.0-rc.7 晋升为 v1.0.0 时写下这份说明：第 1 节取自
 release/v1.0.0/manifest.json；其余各节是 v1.0.0-rc.7 验收时的发布说明（提交
-dc00cd16ed236a8c3beed53832360548695c8358 上的 release/v1.0.0-rc.7/notes.md），原样保留。
+dc00cd16ed236a8c3beed53832360548695c8358 上的 release/v1.0.0-rc.7/notes.md），原样保留；只有第 6、7 节
+说晋升没有在 AWS 上实测的两处，在晋升实跑之后改成了实跑的结果（tag v1.0.0 上是晋升时的原文）。
 -->
 
 # Colvenna Lake v1.0.0 发布说明
@@ -17,7 +18,7 @@ dc00cd16ed236a8c3beed53832360548695c8358 上的 release/v1.0.0-rc.7/notes.md）�
 | 项 | 内容 |
 | --- | --- |
 | 正式版 | `v1.0.0`（annotated tag） |
-| 晋升自 | `v1.0.0-rc.7`，判为 GO：它验收时的发布说明，即提交 `dc00cd16ed236a8c3beed53832360548695c8358` 上的 [`release/v1.0.0-rc.7/notes.md`](https://github.com/colvenna/colvenna-lake/blob/dc00cd16ed236a8c3beed53832360548695c8358/release/v1.0.0-rc.7/notes.md)。没有重新构建任何东西；本节之后的各节就是那份说明，原样保留 |
+| 晋升自 | `v1.0.0-rc.7`，判为 GO：它验收时的发布说明，即提交 `dc00cd16ed236a8c3beed53832360548695c8358` 上的 [`release/v1.0.0-rc.7/notes.md`](https://github.com/colvenna/colvenna-lake/blob/dc00cd16ed236a8c3beed53832360548695c8358/release/v1.0.0-rc.7/notes.md)。没有重新构建任何东西；本节之后的各节就是那份说明，原样保留，只有第 6、7 节关于晋升的两处按晋升的实跑结果更正 |
 | 镜像与安装所用的源码 | 提交 [`3e7344f1`](https://github.com/colvenna/colvenna-lake/commit/3e7344f1ba7e62ab7ed48d2574656a8647a42e4b)（`3e7344f1ba7e62ab7ed48d2574656a8647a42e4b`），与 `v1.0.0-rc.7` 的相同。tag `v1.0.0` 指向的提交在 `v1.0.0-rc.7` 的 tag 提交 `a01301c59a79fcb92aa7804359859bc34fae691d` 上只多了 `release/v1.0.0/` |
 | 发布清单 | [`release/v1.0.0/manifest.json`](https://github.com/colvenna/colvenna-lake/blob/v1.0.0/release/v1.0.0/manifest.json)：`v1.0.0-rc.7` 的清单换成正式版的名字，digest 全都不变；`promotion` 记下晋升自哪个候选、它的 tag 提交与清单，以及记下 GO 结论的提交与文件 |
 | 镜像 | 发布仓库里 `v1.0.0-rc.7` 的 35 个镜像（产品、测试夹具与第三方镜像，colvenna CLI，以及 Colvenna Catalog 发布版的镜像与 chart 的副本），以同一个 digest 另打上正式版的 tag：`v1.0.0`、`v1.0.0-<变体>`，第三方镜像 `v1.0.0-<名字>`。候选的 tag 照旧 |
@@ -87,7 +88,7 @@ COLVENNA_ENV=<环境> COLVENNA_REGION=<区域> COLVENNA_ACCOUNT=<账号> \
 - **平台的两个 catalog token 续签（[#23](https://github.com/colvenna/colvenna-lake/issues/23)，PR [#26](https://github.com/colvenna/colvenna-lake/pull/26)）。** 管理员 token 与 Operator 的 token（各 90 天）每次安装都核对：被 catalog 拒绝或剩余有效期不到 `TOKEN_RENEW_DAYS`（默认 30 天）时重签，token 的 id 记进 Secret。
 - **catalog 的私有 CA 证书重签（[#24](https://github.com/colvenna/colvenna-lake/issues/24)，PR [#27](https://github.com/colvenna/colvenna-lake/pull/27)）。** 已过期或剩余有效期不到 `CA_RENEW_DAYS`（默认 90 天）时，用同一个密钥与名称重签一张（825 天），catalog 的 Pod 随之滚动；旧 CA 证书仍能校验新签的服务端证书。
 - **分层表的层延迟（[#28](https://github.com/colvenna/colvenna-lake/issues/28)，PR [#31](https://github.com/colvenna/colvenna-lake/pull/31)）。** 声明了 `quality` 的分层表，作业对每张流读上游只读一次（原来读两次，两个读端共用一个 Paimon consumer，层延迟指标因此与标记不一致）。在这之前部署的这类表，升级之后要按用户手册第 4.3 节逐个重建（部署指南第 7 节）。指标余下的小偏差由 [#34](https://github.com/colvenna/colvenna-lake/issues/34) 跟踪。
-- **正式版的晋升工具（[#30](https://github.com/colvenna/colvenna-lake/issues/30)，PR [#32](https://github.com/colvenna/colvenna-lake/pull/32)）。** `deploy/scripts/release/promote.sh` 把判为 GO 的候选晋升为正式版，不重新构建：清单指向候选的制品，按 digest；`install.sh --release` 与 `check-release.sh` 接受正式版的名字与它的晋升记录。还没有在 AWS 上实测。
+- **正式版的晋升工具（[#30](https://github.com/colvenna/colvenna-lake/issues/30)，PR [#32](https://github.com/colvenna/colvenna-lake/pull/32)）。** `deploy/scripts/release/promote.sh` 把判为 GO 的候选晋升为正式版，不重新构建：清单指向候选的制品，按 digest；`install.sh --release` 与 `check-release.sh` 接受正式版的名字与它的晋升记录。晋升 `v1.0.0` 时在 AWS 上实跑过（PR [#38](https://github.com/colvenna/colvenna-lake/pull/38)，见第 7 节）。
 - **测试缺陷的修复（[#18](https://github.com/colvenna/colvenna-lake/issues/18)、[#20](https://github.com/colvenna/colvenna-lake/issues/20)，PR [#19](https://github.com/colvenna/colvenna-lake/pull/19)、[#21](https://github.com/colvenna/colvenna-lake/pull/21)）。** 发布清单拒绝（UAT-DEP-08）的临时提交不再执行 clone 里的钩子，并按 schema 3 的清单改写产品镜像；只改测试。
 - **上游 [Apache Paimon](https://paimon.apache.org/) 的限制（[#6](https://github.com/colvenna/colvenna-lake/issues/6)，没有变）。** Paimon 2.0.0 的 Flink 写入端（`CommitterOperator`）以流模式写有界输入、写入并行度大于 1 时，后结束的那个写入子任务的收尾数据可能被静默丢弃，作业照常以 FINISHED 结束，没有报错。
   - 条件，同时成立时才会发生：流模式且开了 checkpoint；输入有界；写入并行度大于 1，且各写入子任务在不同的 checkpoint 之后结束；最后一个子任务的输入结束赶在提交器处理上一个“checkpoint 完成”之前到达。
@@ -103,7 +104,7 @@ COLVENNA_ENV=<环境> COLVENNA_REGION=<区域> COLVENNA_ACCOUNT=<账号> \
 - 分层表的层延迟指标按轮次配对提交：两轮之间落了两个提交时偏高一个 checkpoint 间隔，`lastDataCommit` 又先于 position 读取（[#34](https://github.com/colvenna/colvenna-lake/issues/34)）。看板与告警 `ColvennaLayerLatencyP95` 用这个指标，偏差离 120 秒的门槛还远；本次 UAT-MON-01 两个区域都通过。
 - 声明了 `quality` 的分层表的升级（[#28](https://github.com/colvenna/colvenna-lake/issues/28) 的修复之后）：部署指南写明要逐个重建，Operator 在 savepoint 对不上时回到旧作业，这一点是按 Flink 恢复 savepoint 的规则推断的，没有实测；本次升级时 `uat` 上没有这类表，也没有用例走这条路径。
 - [#22](https://github.com/colvenna/colvenna-lake/issues/22)、[#23](https://github.com/colvenna/colvenna-lake/issues/23)、[#24](https://github.com/colvenna/colvenna-lake/issues/24) 的修复在真实环境里走到的是落进续期余量的 grant 与调大阈值之后提前续期的 token、证书（UAT 报告第 5 节）；已经过期的情况由离线测试覆盖。
-- 正式版的晋升与按正式版安装（[#30](https://github.com/colvenna/colvenna-lake/issues/30)）没有在 AWS 上实测。
+- 正式版的晋升（[#30](https://github.com/colvenna/colvenna-lake/issues/30)）2026-11-04 在 AWS 上实跑：`promote.sh` 把 `v1.0.0-rc.7` 晋升为 `v1.0.0`，发布仓库里候选的 35 个镜像以同一个 digest 另打上正式版的 tag（PR [#38](https://github.com/colvenna/colvenna-lake/pull/38)）。按正式版安装只实跑到安装之前：在 tag `v1.0.0` 的全新 checkout 上，`check-release.sh v1.0.0 --fixtures` 通过；`install.sh --release v1.0.0` 以一套新环境跑完了安装前的全部检查，只执行了本地工具一步，没有在 AWS 上建任何东西。按正式版的完整安装没有实测；它装的镜像与 `v1.0.0-rc.7` 的是同一组 digest，候选的完整安装在本次 UAT 中验证过。
 - catalog 的默认来源 GitHub Container Registry 还没有实跑：catalog 公开之前只能经 `COLVENNA_CATALOG_REGISTRY` 取（[#10](https://github.com/colvenna/colvenna-lake/issues/10)，[#4](https://github.com/colvenna/colvenna-lake/issues/4) 的 M3）。
 - 只有一个 AWS 账号：跨账号安装没有实测。
 - 验收覆盖的缩小（[#6](https://github.com/colvenna/colvenna-lake/issues/6)）：UAT-CAT-04（与 UAT-CAT-01）的流写步骤固定写入并行度 1，这一步仍验证带 checkpoint 的写入经 catalog 多次提交且不丢行，但不覆盖多个写入子任务的数据进同一个提交。上游修复发布、升级 Paimon 之后撤掉。
