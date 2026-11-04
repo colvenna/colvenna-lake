@@ -87,6 +87,12 @@ global_settings:
       path: tests/acceptance/test_catalog_chart.py
       reason: "Kubernetes Secret names in a unit test's chart values (databaseSecret, tlsSecret), no values"
     - rule_id: SECRET-SECRET-KEYWORD
+      path: tests/acceptance/test_catalog_ca.py
+      reason: "The name of the Kubernetes Secret that keeps the catalog's private CA key (colvenna-catalog-ca-key, as install-catalog.sh names it), no value"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: tests/acceptance/test_token_renewal.py
+      reason: "The names of the Kubernetes Secrets of the platform's catalog tokens (as install-catalog.sh and install-operator.sh name them), and a stub's token made at run time (uuid4), no values"
+    - rule_id: SECRET-SECRET-KEYWORD
       path: tests/acceptance/test_deploy.py
       reason: "Kubernetes Secret names in a unit test's inventory and leftovers, no values"
     - rule_id: SECRET-BASE64-HIGH-ENTROPY-STRING
