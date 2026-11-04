@@ -14,10 +14,10 @@
 #   3. records both in deploy/.state/<env>/catalog-release.json, which install-catalog.sh reads.
 # The release comes from the registry the catalog publishes it in, GitHub Container Registry
 # (ghcr.io/colvenna/colvenna-catalog and ghcr.io/colvenna/charts/colvenna-catalog, as the pin names
-# them), read anonymously, as GitHub gives a public package to anyone (until the catalog's are public
-# there, an anonymous read is refused). COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>]
-# names another that holds the same digests under the same repository names below its prefix (the
-# maintainers' private release registry, for a candidate's acceptance before the catalog is public):
+# them), read anonymously, as GitHub gives a public package to anyone (the catalog publishes its
+# releases there, not its candidates). COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>]
+# names another that holds the same digests under the same repository names below its prefix (a
+# mirror, or the maintainers' private release registry, which holds the catalog's candidates):
 # an ECR registry is read with the AWS credentials, with pull rights only; any other, anonymously too.
 # With --release <candidate>, from the copies Colvenna Lake's candidate keeps in its own release
 # registry COLVENNA_RELEASE_REGISTRY (colvenna-lake-release/..., as its manifest names them;
@@ -80,11 +80,11 @@ if [[ -n "$region" ]]; then
   helm registry login "${registry%%/*}" --username AWS --password-stdin <"$work/token" >/dev/null 2>&1
   rm -f "$work/token"
 fi
-# cannot_read <what>: the registry did not give it; an anonymous one may not have it public yet.
+# cannot_read <what>: the registry did not give it; an anonymous one may not publish that version.
 cannot_read() {
   echo "Cannot read $1" >&2
   if [[ -z "$region" && -z "${COLVENNA_CATALOG_REGISTRY:-}" ]]; then
-    echo "$registry gives Colvenna Catalog's packages to anyone once they are public. Until $candidate is" \
+    echo "$registry gives Colvenna Catalog's releases to anyone, not its candidates. If $candidate is not" \
       "there, COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>] names a registry holding the same digests," \
       "e.g. the maintainers' release registry <account>.dkr.ecr.<region>.amazonaws.com/colvenna-catalog-release" >&2
   fi

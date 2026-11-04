@@ -147,7 +147,7 @@ class FetchCatalogTest(unittest.TestCase):
                     self.assertIn("MANIFEST_UNKNOWN", out.stderr)
                     self.assertIn(f"Cannot read {where}/{what}", out.stderr)
                     self.assert_nothing_fetched(scratch)
-                    # Until the release is public there, the default says what to give instead.
+                    # When the version is not there, the default says what to give instead.
                     self.assertEqual("COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>]" in out.stderr, where == GHCR)
 
     def test_an_image_of_another_commit_or_platform_is_refused_before_any_copy(self):
