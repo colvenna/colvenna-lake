@@ -22,8 +22,9 @@ by their repository there and digest (ghcr.io/colvenna/colvenna-catalog and
 ghcr.io/colvenna/charts/colvenna-catalog), the chart with its version. Its schema_version is the
 catalog schema that release's server applies (its migrations V1..Vn at built_from). The setting
 COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>] puts another registry in place of the pin's, holding
-the same digests under the same repository names (catalog-source): the maintainers' private release
-registry, for a candidate's acceptance before the catalog is public, read with the AWS credentials.
+the same digests under the same repository names (catalog-source): a mirror, or the maintainers' private
+release registry, which holds the catalog's candidates (GHCR has its releases only), read with the AWS
+credentials.
 A candidate keeps a copy of both, the same digests, in its own release registry
 (colvenna-lake-release/colvenna-catalog and colvenna-lake-release/charts/colvenna-catalog, tagged
 <candidate>), and records them, the pin's fields beside them, under catalog (schema 3).

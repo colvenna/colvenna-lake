@@ -365,8 +365,9 @@ assert_catalog_source() {
       echo "No Colvenna Catalog $candidate (deploy/images/colvenna-catalog.json) for an anonymous reader in" \
         "$registry: $answer" >&2
       if [[ -z "${COLVENNA_CATALOG_REGISTRY:-}" ]]; then
-        echo "Until it is public there, give COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>], a registry" \
-          "holding the same digests, e.g. the maintainers' release registry" \
+        echo "If it is not published there (only the catalog's releases are), give" \
+          "COLVENNA_CATALOG_REGISTRY=<registry>[/<prefix>], a registry holding the same digests, e.g." \
+          "the maintainers' release registry" \
           "<account>.dkr.ecr.<region>.amazonaws.com/colvenna-catalog-release" >&2
       fi
       return 1
