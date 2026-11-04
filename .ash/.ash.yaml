@@ -18,6 +18,9 @@ global_settings:
       path: deploy/images/doris/reader-lock.json
       reason: "SHA-256 checksums of the reader's artifacts, which prepare-reader.py verifies"
     - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
+      path: .gitguardian.yaml
+      reason: "ggshield's ignore SHAs: the SHA-256 of each finding it is to ignore, no value (https://github.com/colvenna/colvenna-lake/issues/42)"
+    - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
       path: "docs/history/**"
       reason: "Git commit ids in the development records"
     - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
