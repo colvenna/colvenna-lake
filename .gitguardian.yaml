@@ -1,0 +1,29 @@
+# ggshield settings (GitGuardian's command-line scanner, configuration version 2):
+# https://docs.gitguardian.com/ggshield-docs/configuration
+# Each finding of ggshield's scan of the whole history (2026-11-04) was checked by hand: none is a
+# credential (https://github.com/colvenna/colvenna-lake/issues/42). Each is ignored by its ignore SHA,
+# ggshield's SHA-256 of the matched string and its type
+# (get_ignore_sha, https://github.com/GitGuardian/ggshield/blob/v1.56.1/ggshield/core/filter.py), so
+# this file holds no value. Nothing else is ignored, no path and no detector: any other value is
+# reported. Each name gives the finding's file in the history, not a line.
+version: 2
+secret:
+  ignored_matches:
+    - name: "a made-up user name that a unit test expects, read as a password (Generic Password; colvenna-bi/tests/test_colvenna_bi.py)"
+      match: dbcb858c03caa796d15a8660c7278fe4d4597c10198b1b8bddf78337ad4f6033
+    - name: "a made-up password in a unit test's Kubernetes Secret (Generic Password; colvenna-operator/src/test/java/com/colvenna/lake/operator/dashboard/LakeDashboardReconcilerTest.java)"
+      match: 9f955b827399248ca86e77aa0324ca966c2bf06ba03437e46952762d1c063f19
+    - name: "the header of a forged unsigned token (alg none) that a negative test sends (Generic High Entropy Secret; tests/acceptance/entry/run-entry.sh)"
+      match: 2d47f9d6cb13f4cd460bf2541004d43749d2ec988234479e003873f3cd8396c6
+    - name: "a test user's password, made at run time (os.urandom), no value (Generic Password; tests/acceptance/security/run-denials.sh)"
+      match: 3e6e54181f3fdbb837229d2fb55f02368930e4ab8fc90c0a0443c1d94ceebc30
+    - name: "the names of Kubernetes Secrets in a unit test, no values (Generic Password; tests/acceptance/test_catalog_chart.py)"
+      match: 1e09e015c7d6f174a23a0a144541a755a85e71a697deacd3ddd540d07ee49dd0
+    - name: "the names of Kubernetes Secrets in a unit test, no values (Generic Password; tests/acceptance/test_catalog_chart.py)"
+      match: 02ea447af5b272fbfed1c36906333db3dd5a549b6b93aeeb788ca18704b5cf0e
+    - name: "a made-up password in a unit test's stubbed Doris error (Generic Password; tests/acceptance/test_doris_rollout.py)"
+      match: ff23874604e921b1606054779953b91c594d4fc8e84e1f677bc5a1df3bdf40c0
+    - name: "RFC 6238's published TOTP test secret (Generic High Entropy Secret; tests/acceptance/test_entry.py)"
+      match: 452c113cedecf9ecd663af5b2b16a50b86117997f5cd47abca0987fd60cebf39
+    - name: "the path of the file a test fixture writes a password into at run time, read from Secrets Manager, no value (Generic Password; tests/fixtures/sources/sources.sh)"
+      match: a99559b76a8c57eb2c436ad9579cd3e18034d196cb72552ba08c1c925c8a7c0f
