@@ -82,7 +82,7 @@ These checks need no AWS account. Behavior on AWS needs a deployed environment: 
 
 ## Secret scanning
 
-Nothing is made public before [ggshield](https://docs.gitguardian.com/ggshield-docs/getting-started), GitGuardian's command-line scanner, finds 0 incidents in it with this repository's [`.gitguardian.yaml`](.gitguardian.yaml) (#44). This holds for the repository's history, its published artifacts and its GitHub text. The repository is public, so a push publishes its commits. The local hooks below are a best-effort check before that, and CI scans each push again afterwards. The publication scan is the gate for a release and for making anything public. ggshield is installed from a hash-locked file, for CPython 3.12 on Linux (x86_64 or arm64):
+No release is made, and the repository's visibility does not change, before [ggshield](https://docs.gitguardian.com/ggshield-docs/getting-started), GitGuardian's command-line scanner, finds 0 incidents with this repository's [`.gitguardian.yaml`](.gitguardian.yaml) in the repository's history, its published artifacts and its GitHub text (#44). The repository is public, so a push publishes its commits. The local hooks below are a best-effort check before that, and CI scans each push again afterwards. The publication scan is the gate for a release and for a change of visibility. ggshield is installed from a hash-locked file, for CPython 3.12 on Linux (x86_64 or arm64):
 
 ```bash
 python3 -m venv ~/.venvs/colvenna-ggshield
@@ -125,11 +125,11 @@ export PATH="$HOME/.venvs/colvenna-ggshield/bin:$PATH" GITGUARDIAN_API_KEY=...  
   - Any other finding (a test value, a public example, a false positive) is added to `.gitguardian.yaml` by its ignore SHA, with a name that gives the file and the reason. The addition is reviewed in its pull request.
   - No path or detector is ignored.
   - A tracked file's name should avoid credential words such as "secret", "token" or "password". A build manifest that pairs a path with its SHA-256 reads to ggshield as a secret: Colvenna Isle's did ([colvenna/colvenna-isle#25](https://github.com/colvenna/colvenna-isle/issues/25)). An ignore entry would be needed again each time the file changed, so rename the file instead.
-- **Deployment values:** ggshield does not look for AWS account IDs, ARNs, domains or internal addresses. The no-deployment-values gate checks each commit made with the hooks, and CI checks each pull request's tree. Neither checks the GitHub text, the artifacts, or every commit that the scan fetched (a skipped hook, a pull request's earlier heads). So a maintainer also runs the gate over all that the scan fetched, and reviews each hit:
+- **Deployment values:** ggshield does not look for AWS account IDs, ARNs, domains or internal addresses. The no-deployment-values gate checks each commit made with the hooks, and CI checks each pull request's tree. Neither checks the GitHub text, the artifacts, or every commit that the scan fetched: a commit made with the hooks skipped, a pull request's earlier heads, or what a merge changes on its own (`--cc` shows that). So a maintainer also runs the gate over all that the scan fetched, and reviews each hit:
 
   ```bash
   DIR=<private directory>
-  for git in "$DIR"/mirror.git "$DIR"/wiki.git; do if [ -d "$git" ]; then git -C "$git" log --all -p; fi; done >"$DIR/histories.patch"
+  for git in "$DIR"/mirror.git "$DIR"/wiki.git; do if [ -d "$git" ]; then git -C "$git" log --all -p --cc; fi; done >"$DIR/histories.patch"
   find "$DIR/histories.patch" "$DIR/unpacked" -type f -exec python3 deploy/scripts/redaction/redaction.py {} +
   ```
 
