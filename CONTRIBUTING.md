@@ -51,7 +51,7 @@ runs the file checks, markdownlint, actionlint, the two gates above and the ggsh
   python3 -m unittest discover -s deploy/scripts/release -p 'test_*.py'
   python3 -m unittest discover -s deploy/scripts/redaction -p 'test_*.py'
   python3 -m unittest discover -s deploy/scripts/rename -p 'test_*.py'
-  python3 -m unittest discover -s deploy/scripts/ggshield -p 'test_*.py'   # the publication scan's offline parts, no ggshield
+  python3 -m unittest discover -s deploy/scripts/ggshield -p 'test_*.py'   # the publication scan and the hooks, offline
   bash deploy/scripts/monitoring/check-rules.sh
   ```
 
@@ -113,7 +113,7 @@ export PATH="$HOME/.venvs/colvenna-ggshield/bin:$PATH" GITGUARDIAN_API_KEY=...  
 
   It exits 0 only when every scan is complete and finds 0 incidents. ggshield 1.56.1 exits 0 even when part of a scan fails, so a "Scanning failed" message or an error in its report also makes the scan fail. The summary counts the binary files that ggshield cannot decode or drops by extension. Any other file that ggshield skips makes the scan fail.
 
-  The reports in `--output` contain the matched values, so keep that directory private. The summary has no values; it records the date, the scanned commit, the ggshield version, the quota and each finding's location.
+  The reports in `--output` contain the matched values, so keep that directory private. The summary has no values; it records the date, the refs and the number of commits scanned, the commit whose `.gitguardian.yaml` was used, the ggshield version, the quota and each finding's location.
 - **Each commit and each push (best effort):** `pre-commit install` installs the pre-commit, commit-msg and pre-push hooks, the [ggshield hooks](.pre-commit-config.yaml) among them. At a push, the file checks and the two gates also run on the pushed files. The ggshield hooks use the `ggshield` on `PATH` and refuse any version other than the one in the lock file.
   - The pre-commit hook scans the staged changes.
   - The pre-push hook scans the commits about to be published. It covers at most `max_commits_for_hook` commits of a push (1000, set in `.gitguardian.yaml`), and ggshield lets a push through with only a warning when it cannot work out the commit range. When one push updates several refs (`git push --all`, or several branches or tags), pre-commit hands ggshield only the first, so push them one at a time.
@@ -125,13 +125,15 @@ export PATH="$HOME/.venvs/colvenna-ggshield/bin:$PATH" GITGUARDIAN_API_KEY=...  
   - Any other finding (a test value, a public example, a false positive) is added to `.gitguardian.yaml` by its ignore SHA, with a name that gives the file and the reason. The addition is reviewed in its pull request.
   - No path or detector is ignored.
   - A tracked file's name should avoid credential words such as "secret", "token" or "password". A build manifest that pairs a path with its SHA-256 reads to ggshield as a secret: Colvenna Isle's did ([colvenna/colvenna-isle#25](https://github.com/colvenna/colvenna-isle/issues/25)). An ignore entry would be needed again each time the file changed, so rename the file instead.
-- **Deployment values:** ggshield does not look for AWS account IDs, ARNs, domains or internal addresses. The no-deployment-values gate checks files and commit messages as they are committed, but not the GitHub text or the artifacts. So a maintainer also runs the gate over those, as the scan fetched them, and reviews each hit:
+- **Deployment values:** ggshield does not look for AWS account IDs, ARNs, domains or internal addresses. The no-deployment-values gate checks each commit made with the hooks, and CI checks each pull request's tree. Neither checks the GitHub text, the artifacts, or every commit that the scan fetched (a skipped hook, a pull request's earlier heads). So a maintainer also runs the gate over all that the scan fetched, and reviews each hit:
 
   ```bash
-  find <private directory>/unpacked -type f -exec python3 deploy/scripts/redaction/redaction.py {} +
+  DIR=<private directory>
+  for git in "$DIR"/mirror.git "$DIR"/wiki.git; do if [ -d "$git" ]; then git -C "$git" log --all -p; fi; done >"$DIR/histories.patch"
+  find "$DIR/histories.patch" "$DIR/unpacked" -type f -exec python3 deploy/scripts/redaction/redaction.py {} +
   ```
 
-  The maintainers' accounts must appear 0 times. Third-party packages inside workflow artifacts can hold example ARNs and addresses, which are expected.
+  The maintainers' accounts must appear 0 times. A patch is not the file it changes, so in the histories the gate also reports what it allows in the repository: the addresses that `public-addresses.tsv` lists, in the files it names and in itself, and the Doris default configurations that the hook leaves out. Third-party packages inside workflow artifacts can hold example ARNs and addresses. Any other hit is a finding.
 
 ## Architecture diagram
 

@@ -376,7 +376,7 @@ The full guide, with every CI job's commands, is [CONTRIBUTING.md](CONTRIBUTING.
 
 ## Security
 
-How to report a suspected vulnerability, and the security model in brief, are in [SECURITY.md](SECURITY.md). Never put passwords, keys or tokens in an issue or a pull request. Nothing is published before ggshield, GitGuardian's command-line scanner, finds 0 incidents in it ([secret scanning](CONTRIBUTING.md#secret-scanning)).
+How to report a suspected vulnerability, and the security model in brief, are in [SECURITY.md](SECURITY.md). Never put passwords, keys or tokens in an issue or a pull request. No release is made, and the repository's visibility does not change, before ggshield, GitGuardian's command-line scanner, finds 0 incidents in everything the public can fetch; hooks and CI scan each push as well ([secret scanning](CONTRIBUTING.md#secret-scanning)).
 
 The project holds itself to this baseline:
 

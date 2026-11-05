@@ -1,11 +1,7 @@
-"""Offline tests of the publication secret scan (ggshield_scan.py) and the ggshield hook (ggshield_hook.py)
-(#44): what runs without ggshield or the network. The texts and values here are made up, and none reads
-as a credential."""
-
+"""Offline tests of the publication secret scan, ggshield_scan.py (#44): what runs without ggshield or the
+network. The texts and values here are made up, and none reads as a credential."""
 import gzip
 import io
-import os
-import re
 import subprocess
 import sys
 import tarfile
@@ -278,34 +274,19 @@ class ExclusionTest(unittest.TestCase):
         ggshield_scan.check_output(Path("/tmp/private/scan"), excluded)
 
 
-class HookTest(unittest.TestCase):
-    """The pre-commit hooks run ggshield only at the version requirements.lock pins."""
-
-    def run_hook(self, version, *args):
+class VersionTest(unittest.TestCase):
+    def test_another_ggshield_is_refused_before_anything_is_fetched(self):
         with tempfile.TemporaryDirectory() as work:
             fake = Path(work, "ggshield")
-            fake.write_text("#!/bin/sh\n"
-                            f'if [ "$1" = --version ]; then echo "ggshield, version {version}"; exit 0; fi\n'
-                            'echo "ran: $*"; exit 3\n')
+            fake.write_text('#!/bin/sh\necho "ggshield, version 0.0.1"\n')
             fake.chmod(0o755)
-            return subprocess.run([sys.executable, str(HERE / "ggshield_hook.py"), *args], capture_output=True,
-                                  text=True, env={**os.environ, "PATH": f"{work}:/usr/bin:/bin"})
 
-    def test_the_pinned_version_scans_the_staged_changes_or_the_pushed_commits(self):
-        pinned = re.search(r"^ggshield==(\S+) ", (HERE / "requirements.lock").read_text(encoding="utf-8"), re.M)[1]
+            with self.assertRaises(SystemExit) as refused:
+                ggshield_scan.main(["--output", str(Path(work, "out")), "--ggshield", str(fake)])
 
-        for mode in ("pre-commit", "pre-push"):
-            done = self.run_hook(pinned, mode)
-
-            self.assertEqual((done.returncode, done.stdout), (3, f"ran: secret scan {mode}\n"))
-
-    def test_another_version_is_refused_with_the_reason(self):
-        done = self.run_hook("0.0.1", "pre-commit")
-
-        self.assertEqual(done.returncode, 1)
-        self.assertIn("needs ggshield", done.stderr)
-        self.assertIn("found: 0.0.1", done.stderr)
-        self.assertIn("SKIP=ggshield,ggshield-push", done.stderr)
+            self.assertIn("the scan needs ggshield", str(refused.exception))
+            self.assertIn("found: 0.0.1", str(refused.exception))
+            self.assertFalse(Path(work, "out").exists())
 
 
 if __name__ == "__main__":

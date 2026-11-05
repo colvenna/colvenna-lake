@@ -34,7 +34,7 @@ import zlib
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from ggshield_pin import installed_version, pinned_version
+from ggshield_pin import require_pinned
 
 ZIP_SUFFIXES = (".zip", ".whl", ".jar")
 TAR_SUFFIXES = (".tar", ".tar.gz", ".tgz")
@@ -401,10 +401,7 @@ def main(argv=None):
     parser.add_argument("--ggshield", default=shutil.which("ggshield") or "ggshield")
     args = parser.parse_args(argv)
 
-    want, have = pinned_version(), installed_version(args.ggshield)
-    if have != want:  # the completeness checks read this version's messages
-        sys.exit(f"the scan needs ggshield {want}, installed from deploy/scripts/ggshield/requirements.lock "
-                 f"(found: {have})")
+    have = require_pinned(args.ggshield, "the scan")  # the completeness checks read this version's messages
     skip_extensions, excluded = ggshield_rules(args.ggshield)
     out = args.output.resolve()  # ggshield reports the paths it was given; file_line() maps absolute ones
     check_output(out, excluded)

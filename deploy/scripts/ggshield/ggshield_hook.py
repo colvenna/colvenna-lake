@@ -10,7 +10,7 @@ import os
 import shutil
 import sys
 
-from ggshield_pin import installed_version, pinned_version
+from ggshield_pin import require_pinned
 
 MODES = ("pre-commit", "pre-push")
 
@@ -20,11 +20,8 @@ def main():
     if mode not in MODES:
         sys.exit(f"usage: ggshield_hook.py {{{','.join(MODES)}}} [hook arguments]")
     binary = shutil.which("ggshield")
-    want, have = pinned_version(), installed_version(binary)
-    if have != want:
-        sys.exit(f"the ggshield hook needs ggshield {want} on PATH, installed from "
-                 f"deploy/scripts/ggshield/requirements.lock (found: {have}); see CONTRIBUTING.md#secret-scanning, "
-                 "or skip it with SKIP=ggshield,ggshield-push")
+    require_pinned(binary, "the ggshield hook", "; it runs the ggshield on PATH. See CONTRIBUTING.md#secret-scanning, "
+                   "or skip the hooks with SKIP=ggshield,ggshield-push")
     os.execv(binary, [binary, "secret", "scan", mode, *sys.argv[2:]])
 
 
