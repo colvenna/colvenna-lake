@@ -20,6 +20,9 @@ global_settings:
     - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
       path: .gitguardian.yaml
       reason: "ggshield's ignore SHAs: the SHA-256 of each finding it is to ignore, no value (https://github.com/colvenna/colvenna-lake/issues/42)"
+    - rule_id: SECRET-SECRET-KEYWORD
+      path: .github/workflows/ggshield.yml
+      reason: "The name of the Actions secret that ggshield reads, GITGUARDIAN_API_KEY, which the step checks is set; no value (https://github.com/colvenna/colvenna-lake/issues/44)"
     - rule_id: SECRET-HEX-HIGH-ENTROPY-STRING
       path: "docs/history/**"
       reason: "Git commit ids in the development records"

@@ -74,6 +74,7 @@ COLVENNA_ENV=<环境> COLVENNA_REGION=<区域> COLVENNA_ACCOUNT=<账号> \
 | UAT：<区域 2> | PASS <数>、FAIL <数>、BLOCKED <数>、NOT_RUN <数>（必需用例 <数> 条） | UAT 报告的 <节> |
 | 性能验收 | <达到 / 未达到第 4 节的口径> | 性能测试文档的 <节> |
 | 安全：暴露面与拒绝证据 | <结论> | <安全一节的链接> |
+| 密钥扫描（ggshield） | <`VERDICT: CLEAN`：历史、Release 附件、工作流制品、GitHub 文本，以及 wiki（开着时）与 `--path` 给的文件，都是 0 条> | <发布扫描的摘要：日期、扫描的 ref 与提交数、所用 `.gitguardian.yaml` 所在的提交、ggshield 版本与各范围的条数，不写任何值（CONTRIBUTING.md 的 Secret scanning）> |
 | CI | <状态：`PASS`，本候选的每个 PR 在确切的 head 提交上 GitHub Actions 的全部作业都成功（2026-10-30 起的口径，见 CONTRIBUTING.md）；只有 Actions 无法运行时才豁免，记为 `WAIVED_BY_REQUESTER_NOT_PASS` 并写明原因与每个 PR 在确切 SHA 上本地执行全部作业的记录> | <各 PR 的 GitHub Actions 运行；豁免时另附本地 CI 记录> |
 | 发布结论 | <GO / NO-GO> | <发布检查报告的链接> |
 

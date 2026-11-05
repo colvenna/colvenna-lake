@@ -28,3 +28,6 @@ target/
 
 # ASH scan output (.ash/.ash.yaml is the scan configuration)
 /.ash/ash_output/
+
+# ggshield 的缓存，其中有命中的值（#44）；ggshield 在这一行不在时会自己加上
+.cache_ggshield
