@@ -1,7 +1,8 @@
 # 本地：pre-commit install 后每次提交自动检查；全量检查用 pre-commit run --all-files。
 # CI 以同一份配置运行（.github/workflows/lint.yml）。
-# pre-commit install 同时装上 commit-msg 钩子：提交说明也不能有部署值（#248）。
-default_install_hook_types: [pre-commit, commit-msg]
+# pre-commit install 同时装上 commit-msg 钩子：提交说明也不能有部署值（#248）；
+# 以及 pre-push 钩子：推送之前 ggshield 扫描要推送的提交（#44）。
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
 # Only the hooks that say so run on a commit message (the redaction check); the rest on files.
 default_stages: [pre-commit, pre-push, manual]
 repos:
@@ -61,3 +62,25 @@ repos:
         entry: python3 deploy/scripts/rename/old_name.py
         language: system
         stages: [pre-commit, pre-push, manual]
+
+  # ggshield (GitGuardian's command-line scanner) scans the staged changes (pre-commit) and the commits
+  # about to be pushed (pre-push: in a public repository a push publishes them) with .gitguardian.yaml
+  # (#44). deploy/scripts/ggshield/ggshield_hook.py runs the ggshield on PATH only at the version
+  # deploy/scripts/ggshield/requirements.lock pins, and ggshield needs a GitGuardian API key
+  # (GITGUARDIAN_API_KEY, or ggshield auth login). Best effort: SKIP=ggshield,ggshield-push skips them,
+  # and CI's pre-commit job skips them (the secret scan workflow scans each push instead). See
+  # CONTRIBUTING.md#secret-scanning.
+  - repo: local
+    hooks:
+      - id: ggshield
+        name: ggshield (secret scan of the staged changes)
+        entry: python3 deploy/scripts/ggshield/ggshield_hook.py pre-commit
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: ggshield-push
+        name: ggshield (secret scan of the commits to push)
+        entry: python3 deploy/scripts/ggshield/ggshield_hook.py pre-push
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
